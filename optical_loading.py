@@ -5,11 +5,12 @@ import numpy as np
 import pandas as pd
 import datetime as dt
 import math
+from scipy import interpolate
 
 from sqlite3 import OperationalError
 
 from sotodlib import core
-from sotodlib.io import load_book
+from sotodlib.io import load_book, hkdb
 import sotodlib.io.g3tsmurf_utils as utils
 from sotodlib.io.load_smurf import G3tSmurf, Observations
 from sotodlib.io.g3thk_db import G3tHk, HKFields, HKAgents, HKFiles
@@ -27,6 +28,90 @@ ufm_dict = {"c1":["uv38", "uv39", "uv46"],
             "i5":["uv31", "uv42", "uv47"],
             "i6":["mv11", "mv25", "mv26"],
            }
+
+UXM_dict = {"uv42":{"psat_dark": 28.2, "kappa":None, "G":669}, #Kappa at n=3.0
+            "uv47":{"psat_dark": 31.4, "kappa":None, "G":780},
+            "uv31":{"psat_dark": 31.3, "kappa":None, "G":817},
+            "uv39":{"psat_dark": 22.3, "kappa":None, "G":708},
+            "uv38":{"psat_dark": 26.9, "kappa":None, "G":668},
+            "uv46":{"psat_dark": 33.9, "kappa":None, "G":808},
+            "mv32":{"psat_dark": 3.1, "kappa":978, "G":77},
+            "mv49":None,
+            "mv14":{"psat_dark": 2.7, "kappa":657, "G":59},
+            "mv20":{"psat_dark": 3.2, "kappa":849, "G":71},
+            "mv13":{"psat_dark": 2.9, "kappa":752, "G":66},
+            "mv34":{"psat_dark": 2.8, "kappa":887, "G":69},
+            "mv11":{"psat_dark": 3, "kappa":1004, "G":80},
+            "mv25":{"psat_dark": 3.5, "kappa":944, "G":78},
+            "mv26":{"psat_dark": 3.8, "kappa":1004, "G":80},
+            "mv21":{"psat_dark": 3.0, "kappa":1042, "G":80},
+            "mv24":{"psat_dark": 3.7, "kappa":980, "G":84},
+            "mv28":{"psat_dark": 3.7, "kappa":1004, "G":86}
+           }
+            
+
+_therm_dict = {"c1":"lat.cryo-ls372-lsa22vr.feeds.temperatures.Channel_03_T",
+              "i1":"lat.cryo-ls372-lsa22vr.feeds.temperatures.Channel_15_T",
+              "i3":"lat.cryo-ls372-lsa22vr.feeds.temperatures.Channel_09_T",
+              "i4":"lat.cryo-ls372-lsa22vr.feeds.temperatures.Channel_11_T",
+              "i5":"lat.cryo-ls372-lsa22vr.feeds.temperatures.Channel_01_T",
+              "i6":"lat.cryo-ls372-lsa22vr.feeds.temperatures.Channel_14_T",
+             }
+
+therm_dict = {"c1":"cryo-ls372-lsa22vr.temperatures.Channel_03_T",
+              "i1":"cryo-ls372-lsa22vr.temperatures.Channel_15_T",
+              "i3":"cryo-ls372-lsa22vr.temperatures.Channel_09_T",
+              "i4":"cryo-ls372-lsa22vr.temperatures.Channel_11_T",
+              "i5":"cryo-ls372-lsa22vr.temperatures.Channel_01_T",
+              "i6":"cryo-ls372-lsa22vr.temperatures.Channel_14_T",
+             }
+
+def pwv_interp(filepath="/so/home/jorlo/dev/LAT_analysis/apex_pwv_data.npz", time_cut = 17410*1e5):
+    data = {}
+    with np.load(filepath, allow_pickle=True) as x:
+        for k in x.keys():
+            data[k] = x[k]
+
+    flags = np.where((data["timestamp"] >= time_cut))[0]
+
+    for key in data.keys():
+        data[key] = data[key][flags]
+        
+    data["pwv"] = 0.03 + 0.84 * data["pwv"] #APEX to CLASS best fit from Max
+
+    pwv = interpolate.interp1d(data["timestamp"], data["pwv"])
+    return pwv
+
+def get_fpa_temps(obs_list):
+    fpa_temps = np.zeros( (len(obs_list),))
+    cfg = hkdb.HkConfig.from_yaml('/so/home/jorlo/dev/LAT_analysis/hkdb-lat.cfg')
+    for o, obs in enumerate(obs_list):
+        field = therm_dict[obs["tube_slot"]]
+        lspec = hkdb.LoadSpec(
+            cfg=cfg, start=obs['start_time'], end=obs['stop_time'],
+            fields = [field],
+        )
+        result = hkdb.load_hk(lspec, show_pb=False)
+        try:
+            fpa_temps[o] = np.mean(result.data[field][1])
+        except KeyError:
+            fpa_temps[o] = np.nan
+    return fpa_temps
+
+def _get_fpa_temps(obs_list):
+    fpa_temps = np.zeros( (len(obs_list),))
+    for o, obs in enumerate(obs_list):
+        field = _therm_dict[obs["tube_slot"]]
+        data = load_range(
+                obs['start_time'], obs['stop_time'],
+                fields = [field],
+                alias = ['fpa_temp'],
+                data_dir='/so/level2-daq/lat/hk/'
+        )
+        try:
+            fpa_temps[o] = np.mean(data['fpa_temp'][1])
+        except KeyError:
+            fpa_temps[o] = np.nan
 
 def get_obs_biases(iva: dict) -> dict:
     """
