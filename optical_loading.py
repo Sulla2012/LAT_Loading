@@ -29,24 +29,44 @@ ufm_dict = {"c1":["uv38", "uv39", "uv46"],
             "i6":["mv11", "mv25", "mv26"],
            }
 
-UXM_dict = {"uv42":{"psat_dark": 28.2, "kappa":None, "G":669}, #Kappa at n=3.0
-            "uv47":{"psat_dark": 31.4, "kappa":None, "G":780},
-            "uv31":{"psat_dark": 31.3, "kappa":None, "G":817},
-            "uv39":{"psat_dark": 22.3, "kappa":None, "G":708},
-            "uv38":{"psat_dark": 26.9, "kappa":None, "G":668},
-            "uv46":{"psat_dark": 33.9, "kappa":None, "G":808},
-            "mv32":{"psat_dark": 3.1, "kappa":978, "G":77},
-            "mv49":None,
-            "mv14":{"psat_dark": 2.7, "kappa":657, "G":59},
-            "mv20":{"psat_dark": 3.2, "kappa":849, "G":71},
-            "mv13":{"psat_dark": 2.9, "kappa":752, "G":66},
-            "mv34":{"psat_dark": 2.8, "kappa":887, "G":69},
-            "mv11":{"psat_dark": 3, "kappa":1004, "G":80},
-            "mv25":{"psat_dark": 3.5, "kappa":944, "G":78},
-            "mv26":{"psat_dark": 3.8, "kappa":1004, "G":80},
-            "mv21":{"psat_dark": 3.0, "kappa":1042, "G":80},
-            "mv24":{"psat_dark": 3.7, "kappa":980, "G":84},
-            "mv28":{"psat_dark": 3.7, "kappa":1004, "G":86}
+UXM_dict = {"low":{"uv42":{"psat_dark": 28.2, "kappa":None, "G":669}, #Kappa at n=3.0
+                   "uv47":{"psat_dark": 31.4, "kappa":None, "G":780},
+                   "uv31":{"psat_dark": 31.3, "kappa":None, "G":817},
+                   "uv39":{"psat_dark": 22.3, "kappa":None, "G":708},
+                   "uv38":{"psat_dark": 26.9, "kappa":None, "G":668},
+                   "uv46":{"psat_dark": 33.9, "kappa":None, "G":808},
+                   "mv32":{"psat_dark": 3.1, "kappa":978, "G":77},
+                   "mv49":None,
+                   "mv14":{"psat_dark": 2.7, "kappa":657, "G":59},
+                   "mv20":{"psat_dark": 3.2, "kappa":849, "G":71},
+                   "mv13":{"psat_dark": 2.9, "kappa":752, "G":66},
+                   "mv34":{"psat_dark": 2.8, "kappa":887, "G":69},
+                   "mv11":{"psat_dark": 3, "kappa":1004, "G":80},
+                   "mv25":{"psat_dark": 3.5, "kappa":944, "G":78},
+                   "mv26":{"psat_dark": 3.8, "kappa":1004, "G":80},
+                   "mv21":{"psat_dark": 3.0, "kappa":1042, "G":80},
+                   "mv24":{"psat_dark": 3.7, "kappa":980, "G":84},
+                   "mv28":{"psat_dark": 3.7, "kappa":1004, "G":86}
+                },
+            "high":{"uv42":{"psat_dark": 30.3, "kappa":None, "G":669}, #Kappa at n=3.0
+                   "uv47":{"psat_dark": 33.6, "kappa":None, "G":780},
+                   "uv31":{"psat_dark": 33.3, "kappa":None, "G":817},
+                   "uv39":{"psat_dark": 23.9, "kappa":None, "G":708},
+                   "uv38":{"psat_dark": 28.8, "kappa":None, "G":668},
+                   "uv46":{"psat_dark": 36.4, "kappa":None, "G":808},
+                   "mv32":{"psat_dark": 8.8, "kappa":978, "G":77},
+                   "mv49":None,
+                   "mv14":{"psat_dark": 6.6, "kappa":657, "G":59},
+                   "mv20":{"psat_dark": 8.7, "kappa":849, "G":71},
+                   "mv13":{"psat_dark": 8.6, "kappa":752, "G":66},
+                   "mv34":{"psat_dark": 8.6, "kappa":887, "G":69},
+                   "mv11":{"psat_dark": 8.1, "kappa":1004, "G":80},
+                   "mv25":{"psat_dark": 9.4, "kappa":944, "G":78},
+                   "mv26":{"psat_dark": 10.1, "kappa":1004, "G":80},
+                   "mv21":{"psat_dark": 7.5, "kappa":1042, "G":80},
+                   "mv24":{"psat_dark": 9.5, "kappa":980, "G":84},
+                   "mv28":{"psat_dark": 9.7, "kappa":1004, "G":86}
+                }
            }
             
 

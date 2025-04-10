@@ -1,10 +1,14 @@
 *.png
 *.npz
 *.pk
+*.cfg
+*.h5
 
 __pycache__/
 .ipynb_checkpoints/
 michael_randal_code/
+plts/
+pks/
 
 20250321_lat.ipynb
 
