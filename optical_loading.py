@@ -16,7 +16,7 @@ from sotodlib.io.load_smurf import G3tSmurf, Observations
 from sotodlib.io.g3thk_db import G3tHk, HKFields, HKAgents, HKFiles
 import sotodlib.coords.det_match as dm
 from so3g.hk import load_range
-
+import sotodlib.io.load_book as lb
 from sotodlib.core.metadata.loader import IncompleteMetadataError
 
 import sys
@@ -90,7 +90,7 @@ therm_dict = {"c1":"cryo-ls372-lsa22vr.temperatures.Channel_03_T",
               "i6":"cryo-ls372-lsa22vr.temperatures.Channel_14_T",
              }
 
-def pwv_interp(filepath: str="/so/home/jorlo/dev/LAT_analysis/apex_pwv_data.npz", time_cut: float=17410*1e5) -> scipy.interpolate.interp1d:
+def pwv_interp(filepath: str="/so/home/jorlo/dev/LAT_analysis/apex_pwv_data.npz", time_cut: float=17410*1e5) -> interpolate.interp1d:
     """
     Interpolates APEX pwv data. Should be replaced by SO radiometer when it becomes available
 
@@ -121,7 +121,7 @@ def pwv_interp(filepath: str="/so/home/jorlo/dev/LAT_analysis/apex_pwv_data.npz"
     pwv = interpolate.interp1d(data["timestamp"], data["pwv"])
     return pwv
 
-def get_fpa_temps(obs_list: list[core.ArrayManager]) -> np.array:
+def get_fpa_temps(obs_list: list[core.axisman.AxisManager]) -> np.array:
     """
     Function that gets UFM temp for obs. 
     Gets the UFM therm for each OT from level 3 housekeeping.
@@ -150,7 +150,7 @@ def get_fpa_temps(obs_list: list[core.ArrayManager]) -> np.array:
             fpa_temps[o] = np.nan
     return fpa_temps
 
-def _get_fpa_temps(obs_list: list[core.ArrayManager]) -> np.array:
+def _get_fpa_temps(obs_list: list[core.axisman.AxisManager]) -> np.array:
     """
     Function that gets UFM temp for obs.
     Gets the UFM therm for each OT from level 2 housekeeping.
@@ -180,6 +180,56 @@ def _get_fpa_temps(obs_list: list[core.ArrayManager]) -> np.array:
             fpa_temps[o] = np.mean(data['fpa_temp'][1])
         except KeyError:
             fpa_temps[o] = np.nan
+
+def add_iv_info(meta: core.axisman.AxisManager, ctx: core.Context):
+    """
+    Function which adds iv data to a meta data AM.
+    Function modifies meta in place, with iv data
+    being added to a new axis called iv.
+
+    Parameters
+    ----------
+    meta : core.axisman.AxisManager
+        Meta data we wish to add iv data to.
+    ctx : core.Context
+        Context file corresponding to meta data
+
+    Returns
+    -------
+    none
+    """
+    fields = [
+        'p_sat', 'R_n', 'bgmap'
+    ]
+    iv = core.AxisManager(meta.dets)
+
+    for f in fields:
+        iv.wrap_new(f, ('dets',))
+        iv[f] *= np.nan
+    iv_data = lb.load_smurf_npy_data(ctx, meta.obs_info.obs_id, 'iv')
+
+    for d in range( iv_data['nchans']):
+        idx = np.where( np.all( [
+            meta.det_info.smurf.band == iv_data['bands'][d],
+            meta.det_info.smurf.channel == iv_data['channels'][d],
+        ], axis=0))[0]
+        if len(idx) == 0:
+            print( f"Cannot find ({iv_data['bands'][d]},{iv_data['channels'][d]})")
+            continue
+        idx = idx[0]
+        iv.bgmap[idx] = iv_data['bgmap'][d]
+        
+        if iv.bgmap[idx] not in iv_data['bias_groups']:
+            ## iv did not include bias group detector is attached to
+            continue
+        
+        iv.p_sat[idx] = iv_data['p_sat'][d]*1e12
+        iv.R_n[idx] = iv_data['R_n'][d]
+    meta.wrap("iv", iv)
+
+
+
+
 
 def get_obs_biases(iva: dict) -> dict:
     """
