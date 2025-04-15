@@ -21,6 +21,7 @@ from sotodlib.core.metadata.loader import IncompleteMetadataError
 
 import sys
 
+#Dict mapping OTs to UFMs
 ufm_dict = {"c1":["uv38", "uv39", "uv46"],
             "i1":["mv21", "mv24", "mv28"],
             "i3":["mv13", "mv20", "mv34"],
@@ -29,6 +30,7 @@ ufm_dict = {"c1":["uv38", "uv39", "uv46"],
             "i6":["mv11", "mv25", "mv26"],
            }
 
+#Dict that tracks UXM measurements. Low is the low freq channel, high is the high
 UXM_dict = {"low":{"uv42":{"psat_dark": 28.2, "kappa":None, "G":669}, #Kappa at n=3.0
                    "uv47":{"psat_dark": 31.4, "kappa":None, "G":780},
                    "uv31":{"psat_dark": 31.3, "kappa":None, "G":817},
@@ -69,7 +71,8 @@ UXM_dict = {"low":{"uv42":{"psat_dark": 28.2, "kappa":None, "G":669}, #Kappa at 
                 }
            }
             
-
+#Dict mapping OTs to house keeping channels for level 2 hk data base. 
+#Eepreciated in favor of level 3 hk data base.
 _therm_dict = {"c1":"lat.cryo-ls372-lsa22vr.feeds.temperatures.Channel_03_T",
               "i1":"lat.cryo-ls372-lsa22vr.feeds.temperatures.Channel_15_T",
               "i3":"lat.cryo-ls372-lsa22vr.feeds.temperatures.Channel_09_T",
@@ -78,6 +81,7 @@ _therm_dict = {"c1":"lat.cryo-ls372-lsa22vr.feeds.temperatures.Channel_03_T",
               "i6":"lat.cryo-ls372-lsa22vr.feeds.temperatures.Channel_14_T",
              }
 
+#Dict mapping OTs to housekeeping channels for level 3 hk database.
 therm_dict = {"c1":"cryo-ls372-lsa22vr.temperatures.Channel_03_T",
               "i1":"cryo-ls372-lsa22vr.temperatures.Channel_15_T",
               "i3":"cryo-ls372-lsa22vr.temperatures.Channel_09_T",
@@ -86,7 +90,22 @@ therm_dict = {"c1":"cryo-ls372-lsa22vr.temperatures.Channel_03_T",
               "i6":"cryo-ls372-lsa22vr.temperatures.Channel_14_T",
              }
 
-def pwv_interp(filepath="/so/home/jorlo/dev/LAT_analysis/apex_pwv_data.npz", time_cut = 17410*1e5):
+def pwv_interp(filepath: str="/so/home/jorlo/dev/LAT_analysis/apex_pwv_data.npz", time_cut: float=17410*1e5) -> scipy.interpolate.interp1d:
+    """
+    Interpolates APEX pwv data. Should be replaced by SO radiometer when it becomes available
+
+    Parameters
+    ----------
+    filepath : str
+        Path to apex pwv data
+    time cut : float, Default = 17410*1e5
+        Time in unix below which to exclude data.
+
+    Returns
+    -------
+    pwv : scipy.interpolate.interp1d
+        Interp object of pwv vs unix time
+    """
     data = {}
     with np.load(filepath, allow_pickle=True) as x:
         for k in x.keys():
@@ -102,7 +121,20 @@ def pwv_interp(filepath="/so/home/jorlo/dev/LAT_analysis/apex_pwv_data.npz", tim
     pwv = interpolate.interp1d(data["timestamp"], data["pwv"])
     return pwv
 
-def get_fpa_temps(obs_list):
+def get_fpa_temps(obs_list: list[core.ArrayManager]) -> np.array:
+    """
+    Function that gets UFM temp for obs. 
+    Gets the UFM therm for each OT from level 3 housekeeping.
+    Parameters
+    ----------
+    obs_list : list[AxisManager]
+        List of observations to get fpa temps for
+
+    Returns
+    -------
+    fpa_temps : np.array
+       Temperatue for each obs
+    """
     fpa_temps = np.zeros( (len(obs_list),))
     cfg = hkdb.HkConfig.from_yaml('/so/home/jorlo/dev/LAT_analysis/hkdb-lat.cfg')
     for o, obs in enumerate(obs_list):
@@ -118,7 +150,23 @@ def get_fpa_temps(obs_list):
             fpa_temps[o] = np.nan
     return fpa_temps
 
-def _get_fpa_temps(obs_list):
+def _get_fpa_temps(obs_list: list[core.ArrayManager]) -> np.array:
+    """
+    Function that gets UFM temp for obs.
+    Gets the UFM therm for each OT from level 2 housekeeping.
+    Depreciated in favor of level 2 housekeeping.
+    Kept around as sometimes accessing level 2 is necessary.
+    
+    Parameters
+    ----------
+    obs_list : list[AxisManager]
+        List of observations to get fpa temps for
+
+    Returns
+    -------
+    fpa_temps : np.array
+        Temperatue for each obs
+    """
     fpa_temps = np.zeros( (len(obs_list),))
     for o, obs in enumerate(obs_list):
         field = _therm_dict[obs["tube_slot"]]
