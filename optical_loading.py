@@ -90,6 +90,28 @@ therm_dict = {"c1":"cryo-ls372-lsa22vr.temperatures.Channel_03_T",
               "i6":"cryo-ls372-lsa22vr.temperatures.Channel_14_T",
              }
 
+def keys_from_wafer(wafer: str, band: str):
+    if "mv" in wafer:
+        ufm_type = "MF"
+        if band == "090":
+            ufm_band = "MF_1"
+        elif band == "150":
+            ufm_band = "MF_2"
+    elif "uv" in wafer:
+        ufm_type = "UHF"
+        if band == "220":
+            ufm_band = "UHF_1"
+        elif band == "280":
+            ufm_band = "UHF_2"
+    else:
+        ufm_type = "LF"
+        if band == "030":
+            ufm_band = "LF_1"
+        elif band == "040":
+            ufm_band = "LF_2"
+            
+    return ufm_type, ufm_band
+
 def pwv_interp(filepath: str="/so/home/jorlo/dev/LAT_analysis/apex_pwv_data.npz", time_cut: float=17410*1e5) -> interpolate.interp1d:
     """
     Interpolates APEX pwv data. Should be replaced by SO radiometer when it becomes available
