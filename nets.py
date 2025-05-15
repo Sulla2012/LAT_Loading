@@ -8,7 +8,7 @@ from numba import prange
 
 from optical_loading import pwv_interp
 
-with open("results_05012025.pk", "rb") as f:
+with open("results_05015025.pk", "rb") as f:
     result_dict = pk.load(f)
     
 with open("abscals.pk", "rb") as f:
@@ -27,14 +27,14 @@ except:
         if ufm in abscal_dict.keys():
             continue
         if "090" in freq or "150" in freq:
-            net_dict[ufm] = {"090":{"chi":[], "obs":[], "ndets":[], "nets":[], "raw_cal":[], "el":[], "pwv":[]}, "150":{"chi":[], "obs":[], "ndets":[], "nets":[], "raw_cal":[], "el":[], "pwv":[]}}
+            net_dict[ufm] = {"090":{"chi":[], "obs":[], "ndets":[], "nets":[], "raw_cal":[], "el":[], "pwv":[], "neps":[], "phiconv":[]}, "150":{"chi":[], "obs":[], "ndets":[], "nets":[], "raw_cal":[], "el":[], "pwv":[], "neps":[], "phiconv":[]}}
         else:
-            net_dict[ufm] = {"220":{"chi":[], "obs":[], "ndets":[], "nets":[], "raw_cal":[], "el":[], "pwv":[]}, "280":{"chi":[], "obs":[], "ndets":[], "nets":[], "raw_cal":[], "el":[], "pwv":[]}}
+            net_dict[ufm] = {"220":{"chi":[], "obs":[], "ndets":[], "nets":[], "raw_cal":[], "el":[], "pwv":[], "neps":[], "phiconv":[]}, "280":{"chi":[], "obs":[], "ndets":[], "nets":[], "raw_cal":[], "el":[], "pwv":[], "neps":[], "phiconv":[]}}
     
 ctx = core.Context('./smurf_det_preproc.yaml')
 
 start = dt.datetime(2025,4,17, tzinfo=dt.timezone.utc)
-end = dt.datetime(2025,5,5, tzinfo=dt.timezone.utc)
+end = dt.datetime(2025,5,2, tzinfo=dt.timezone.utc)
 obs_list = ctx.obsdb.query(
     f"{end.timestamp()} > timestamp and timestamp > {start.timestamp()} and type=='obs' and subtype=='cmb'"
 )
@@ -112,6 +112,7 @@ for i in prange(len(obs_list)):
             net_dict[cur_wafer][band]["nets"].append(array_net)
             net_dict[cur_wafer][band]["pwv"].append(pwv(cur_obs["timestamp"]))
             net_dict[cur_wafer][band]["el"].append(meta.obs_info.el_center)
-
+            net_dict[cur_wafer][band]["neps"].append(meta.preprocess.noise.white_noise[net_flag] * meta.det_cal.phase_to_pW[net_flag])
+            net_dict[cur_wafer][band]["phiconv"].append(meta.det_cal.phase_to_pW[net_flag]) 
 with open("nets.pk", "wb") as f:
     pk.dump(net_dict, f)

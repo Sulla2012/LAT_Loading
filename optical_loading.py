@@ -143,6 +143,28 @@ def pwv_interp(filepath: str="/so/home/jorlo/dev/LAT_analysis/apex_pwv_data.npz"
     pwv = interpolate.interp1d(data["timestamp"], data["pwv"])
     return pwv
 
+def bandpass_interp(band: str, ufm: str, path: str="/so/home/jorlo/data/lat_bandpasses/") -> interpolate.interp1d:
+    if band == "090" or band == "150":
+        df = pd.read_csv(path + "LAT_MF_bands.csv")
+    elif band == "220" or band == "280":
+        df = pd.read_csv(path + "LAT_UHF_bands.csv")
+    else:
+        raise ValueError("ERROR: band {} not valid".format(valid))
+    
+    x = df["frequency"].to_numpy()
+    if str(ufm+"_f"+band) in df.keys():
+        y = df[str(ufm+"_f"+band)].to_numpy()
+        
+    else:
+        ys = []
+        for key in df.keys():
+            if str(band) in key:
+                ys.append(df[key])
+        ys = np.array(ys)
+        y = np.mean(ys, axis = 0)
+        
+    return interpolate.interp1d(x, y)
+
 def get_fpa_temps(obs_list: list[core.axisman.AxisManager]) -> np.array:
     """
     Function that gets UFM temp for obs. 
