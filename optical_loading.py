@@ -149,7 +149,7 @@ def bandpass_interp(band: str, ufm: str, path: str="/so/home/jorlo/data/lat_band
     elif band == "220" or band == "280":
         df = pd.read_csv(path + "LAT_UHF_bands.csv")
     else:
-        raise ValueError("ERROR: band {} not valid".format(valid))
+        raise ValueError("ERROR: band {} not valid".format(band))
     
     x = df["frequency"].to_numpy()
     if str(ufm+"_f"+band) in df.keys():
@@ -163,7 +163,7 @@ def bandpass_interp(band: str, ufm: str, path: str="/so/home/jorlo/data/lat_band
         ys = np.array(ys)
         y = np.mean(ys, axis = 0)
         
-    return interpolate.interp1d(x, y)
+    return interpolate.interp1d(x, y, bounds_error=False, fill_value=0)
 
 def get_fpa_temps(obs_list: list[core.axisman.AxisManager]) -> np.array:
     """
