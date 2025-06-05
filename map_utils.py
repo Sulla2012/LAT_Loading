@@ -6,14 +6,40 @@ from pixell import enmap
 from scipy.optimize import curve_fit
 from scipy.interpolate import interp1d
 
+import astropy.units as u
+import astropy.constants as const
+
 import datetime as dt
 import ephem
+import os
+import yaml
 
 import so3g.proj as proj
 
+os.environ["JBOLO_PATH"] = "/so/home/jorlo/dev/jbolo"
+os.environ["JBOLO_MODELS_PATH"] = "/so/home/jorlo/dev/bolocalc-so-model"
 
+sim_list = {
+    'baseline': {
+        'LF': os.path.join(os.environ["JBOLO_MODELS_PATH"], "V3r8/V3r8_Baseline/LAT/V3r8_Baseline_LAT_LF.yaml"),
+        'MF': os.path.join(os.environ["JBOLO_MODELS_PATH"], "V3r8/V3r8_Baseline/LAT/V3r8_Baseline_LAT_MF.yaml"),
+        'UHF': os.path.join(os.environ["JBOLO_MODELS_PATH"], "V3r8/V3r8_Baseline/LAT/V3r8_Baseline_LAT_UHF.yaml"),
+    },
+    'goal' : {
+        'LF': os.path.join(os.environ["JBOLO_MODELS_PATH"], "V3r8/V3r8_Goal/LAT/V3r8_Goal_LAT_LF.yaml"),
+        'MF': os.path.join(os.environ["JBOLO_MODELS_PATH"], "V3r8/V3r8_Goal/LAT/V3r8_Goal_LAT_MF.yaml"),
+        'UHF': os.path.join(os.environ["JBOLO_MODELS_PATH"], "V3r8/V3r8_Goal/LAT/V3r8_Goal_LAT_UHF.yaml"),
+    },
+}
 
-
+n_wafers = {
+    'LF_1': 3,
+    'LF_2': 3,
+    'MF_1': 4*3,
+    'MF_2': 4*3,
+    'UHF_1': 2*3,
+    'UHF_2': 2*3,
+}
 
 rad_to_arcsec = (180 * 3600) / np.pi
 rad_to_arcmin = (180 * 60) / np.pi
@@ -22,7 +48,79 @@ rad_to_deg = 180 / np.pi
 so3gsite = proj.coords.SITES['so']
 site = so3gsite.ephem_observer()
 
+def get_matching_obs(obs_id_list: list, tol:float=60., ignore:list = []):
+    """
+    Given a list of arrays of obs ids, figure out which are in common across all lists, 
+    and figure out which obs are the common obs
+    """
+    #Make a list of all unique times, up to 60 second
+    all_times = [float(obs_id_list[0][0].split("_")[1])] #initialize with 1 time
+    for i, obs_ids in enumerate(obs_id_list):
+        for ob in obs_ids:
+            isclose = False
+            for time in all_times:
+                if np.isclose(time, float(ob.split("_")[1]), rtol=0, atol=40):
+                    isclose = True
+                    continue
+            if not isclose:
+                all_times.append(float(ob.split("_")[1]))
+                
+    #Figure out which obs in the lists correspond to which times
+    matching_times = np.ones((len(obs_id_list), len(all_times))) * 999999
+    for i, obs in enumerate(obs_id_list):
+        for j, time in enumerate(all_times):
+            for k in range(len(obs)):
+                if np.isclose(float(obs[k].split("_")[1]), time, rtol=0, atol=40):
+                    matching_times[i,j] = k
+    matched_times = [] #These are the times for which all arrays have a matching obs
+    for i, time in enumerate(matching_times.T):
+        time[ignore] = 0 #set arrays which we want to ignore to 0, so they will always be matched
+        if np.any(time == 999999):
+            continue
+        matched_times.append(all_times[i])
+    array_matched_times = np.zeros((len(obs_id_list),len(matched_times)), dtype=int)
 
+    for i, obs_ids in enumerate(obs_id_list):
+        for j, time in enumerate(matched_times): 
+            for k, obs in enumerate(obs_ids):
+                if np.isclose(float(obs.split("_")[1]), time, rtol=0, atol=40):
+                    array_matched_times[i,j] = int(k)
+                continue
+    return array_matched_times
+
+def load_band_file(fname):
+    base = os.environ.get( "JBOLO_MODELS_PATH", "" )
+    fpath = os.path.join( base, fname )
+    return np.loadtxt( fpath, unpack=True)
+
+def load_sim(filename):
+    s = yaml.safe_load(open(filename))
+    if 'tags' not in s:
+        return s
+    tag_substr( s, s['tags'])
+    return s
+
+def tag_substr(dest, tags, max_recursion=20):
+    """ 'borrowed' from sotodlib because it's so useful. Do string substitution of all 
+    our tags into dest (in-place if dest is a dict). Used to replace tags within yaml files.
+    """
+    assert(max_recursion > 0)  # Too deep this dictionary.
+    if isinstance(dest, str):
+        # Keep subbing until it doesn't change any more...
+        new = dest.format(**tags)
+        while dest != new:
+            dest = new
+            new = dest.format(**tags)
+        return dest
+    if isinstance(dest, list):
+        return [tag_substr(x,tags) for x in dest]
+    if isinstance(dest, tuple):
+        return (tag_substr(x,tags) for x in dest)
+    if isinstance(dest, dict):
+        for k, v in dest.items():
+            dest[k] = tag_substr(v,tags, max_recursion-1)
+        return dest
+    return dest
 
 def get_radial_mask(data, pixsize, radius):
     x0, y0 = int(data.shape[0] / 2), int(data.shape[1] / 2)  # TODO: subpixel alignment
@@ -56,6 +154,31 @@ def get_aperture_phot(imap, cent, pixsize, r = 2.4, r_rand=10, num_rand=50):
         aperture_phots[i] = np.sum(cur_stamp[mask])
         
     return flux - np.mean(aperture_phots)
+
+def x_naught(nu, tb):
+    return const.h * nu / (const.k_B* tb)
+
+def sigma(nu, tb):
+    x = x_naught(nu, tb)
+    return nu**2 * np.exp(x) / (np.exp(x)-1)**2
+
+def temp_conv(T_B, flavor: str, ch: str, kind: str='baseline'):
+    #Convert Temperature in RJ to Boltzman temp at temp T_B
+     
+    sim = load_sim(sim_list[kind][flavor])
+    freq, band = load_band_file( sim['channels'][ch]['band_response']['fname'])
+
+    ## set T_B = T_cmb to get into CMB units
+    #T_B = 2.725*u.Kelvin
+
+    nu = freq*u.GHz
+    f = band
+
+    nu_c = np.trapz( nu * f * sigma(nu, T_B), nu) / np.trapz( f*sigma(nu,T_B), nu)
+    x_0 = x_naught(nu_c, T_B)
+    dTB_dTrj = ((np.exp(x_0) - 1)**2 / ( x_0**2 * np.exp(x_0))).to(1)
+
+    return dTB_dTrj 
 
 #########################################################################################################################################################
 # Beam funcs from F2F Tutorials https://github.com/simonsobs/pwg-tutorials/blob/master/2024_F2F_Tutorials/05_Planet_Data_Processing_and_Mapmaking.ipynb #
