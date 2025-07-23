@@ -202,7 +202,7 @@ fwhm_cuts = {"090": [1.8, 2.3],
              "280": [0.7, 1.0],
             }
 
-bandpasses = {"090": 28.83,
+bandpasses = {"090": 28.83, #Im 90 percent sure these come from LAT_MF/UHF_bands.csv but Im not sure
               "150": 29.49,
               "220": 55.54,
               "280": 46.74

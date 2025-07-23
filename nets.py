@@ -99,12 +99,12 @@ for i in prange(len(obs_list)):
             closest_idx = np.argmin(np.abs(times-cur_obs["timestamp"]))
             closest_obs = times[closest_idx]
             closest_chi = result_dict[cur_wafer][band]["chi"][closest_idx]
-            if np.abs(times[closest_idx]-cur_obs["timestamp"])/3600 < 24 and 100< closest_chi and closest_chi<500: #If most recent obs within a day
-                raw_cal = result_dict[cur_wafer][band]["raw_cal"][closest_idx]
-                chisq = closest_chi
-            else:
-                raw_cal = np.mean(result_dict[cur_wafer][band]["raw_cal"])
-                chisq = 999999
+            #if np.abs(times[closest_idx]-cur_obs["timestamp"])/3600 < 24 and 100< closest_chi and closest_chi<500: #If most recent obs within a day
+            #    raw_cal = result_dict[cur_wafer][band]["raw_cal"][closest_idx]
+            #    chisq = closest_chi
+            #else:
+            raw_cal = np.median(result_dict[cur_wafer][band]["raw_cal"])
+            chisq = 999999
             ndets = len(np.where((meta.preprocess.noise.white_noise[net_flag] != 0))[0])
 
             net_mes = 1/np.sqrt(2) * meta.preprocess.noise.white_noise[net_flag] * raw_cal * meta.det_cal.phase_to_pW[net_flag]
