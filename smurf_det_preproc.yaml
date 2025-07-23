@@ -14,8 +14,26 @@ metadata:
   - db: '{manifestdir}/smurf_detsets/v0/smurf_detset_info.sqlite'
     name: 'smurf'
     det_info: true
+  - db: '{manifestdir}/det_match/lat_det_match_250516m/assignment.sqlite'
+    label: assignment
+    det_info: true
+    on_missing: trim
+  - db: '{manifestdir}/wafer_info/lat_wafer_info_250128r1/wafer_info.sqlite'
+    label: wafer_info
+    det_info: true
+    on_missing: fail
+#  - db: '{manifestdir}/det_cal/v0/det_cal.sqlite'
+  - db: '/so/metadata/lat/manifests/det_cal/lat_det_cal_250515m/det_cal.sqlite'
+    label: det_cal
+    unpack: det_cal
+    # on_missing: fail  ## work-around for variable mask
+    on_missing: trim
+  - db: '{manifestdir}/focal_plane/lat_focal_plane_231129r2/db.sqlite'
+    label: focal_plane
+    unpack: focal_plane
+    on_missing: fail
   - db: '/so/scratch/LAT_files/catchup_20250505/process_archive.sqlite'
     name: 'preprocess'
-  - db: '{manifestdir}/det_cal/v0/det_cal.sqlite'
-    name: 'det_cal'
+  - db: '/so/home/jorlo/dev/LAT_analysis/db.sqlite'
+    name: 'abscal'
 
