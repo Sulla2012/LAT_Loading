@@ -217,7 +217,6 @@ if __name__ == '__main__':
     el_key = "50" #hardcoded :(
     pwv = pwv_interp()
 
-    #path_mf = "/so/home/saianeesh/data/beams/lat/source_maps/mars/"
     path_mf = "/so/home/saianeesh/data/beams/lat/source_maps_per_obs/mars/"
     paths_mf = glob(path_mf + "*/*/*_solved.fits")
     paths_mf = [path for path in paths_mf if "090" in path or "150" in path]
@@ -225,16 +224,12 @@ if __name__ == '__main__':
     path_uhf = "/so/home/saianeesh/data/beams/lat/source_maps_per_obs/mars/"
     paths_uhf = glob(path_uhf + "*/*/*_solved.fits")
     paths_uhf = [path for path in paths_uhf if "220" in path or "280" in path]
-    #paths_uhf += uhf_raws
 
     paths = paths_mf+paths_uhf
 
     beam_dict = {}
 
     cal_dict = {}
-
-    #with open("beams.pk", "rb") as f:
-    #    beam_dict = pk.load(f)
 
     for i in range(len(paths)):
 
