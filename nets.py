@@ -8,7 +8,11 @@ from numba import prange
 
 from optical_loading import pwv_interp
 
-with open("results_05292025.pk", "rb") as f:
+import glob
+
+results = sorted(glob.glob("results_*.pk"))[-1]
+
+with open(results, "rb") as f:
     result_dict = pk.load(f)
     
 with open("abscals.pk", "rb") as f:
@@ -18,8 +22,8 @@ try:
     with open("nets.pk", "rb") as f:
         net_dict = pk.load(f)
     for key in abscal_dict.keys():
-        ufm = key.split("_")[4]
-        freq = key.split("_")[5]
+        ufm = key.split("_")[0]
+        freq = key.split("_")[1]
         if ufm in abscal_dict.keys():
             continue
         if "090" in freq or "150" in freq:
@@ -31,8 +35,8 @@ except:
     net_dict = {}
 
     for key in abscal_dict.keys():
-        ufm = key.split("_")[4]
-        freq = key.split("_")[5]
+        ufm = key.split("_")[0]
+        freq = key.split("_")[1]
         if ufm in abscal_dict.keys():
             continue
         if "090" in freq or "150" in freq:
@@ -53,8 +57,8 @@ pwv = pwv_interp()
 for i in prange(len(obs_list)):
     cur_obs = obs_list[i]
     wafers = cur_obs["stream_ids_list"].split(",")
-    for i in range(len(wafers)):
-        cur_wafer = wafers[i].split("_")[-1]
+    for j in range(len(wafers)):
+        cur_wafer = wafers[j].split("_")[-1]
 
         if cur_wafer not in result_dict.keys():
             print("No abscal for ufm {}".format(cur_wafer))
@@ -83,6 +87,10 @@ for i in prange(len(obs_list)):
                 elif ufm_band == 2:
                     band = "280"
             wafer_flag = np.array([cur_wafer in ufm for ufm in meta.det_info.stream_id])
+            
+            if len(wafer_flag) == 0:
+                print("No det_info for obs {}".format(cur_obs["obs_id"]))
+                continue
 
             bp = (meta.det_cal.bg % 4) // 2
 
@@ -92,19 +100,12 @@ for i in prange(len(obs_list)):
                 net_flag = wafer_flag * (bp==1)
 
             try: 
-                times = np.array([float(label.split("_")[0]) for label in result_dict[cur_wafer][band]["obs"]])
+                times = np.array([float(label.split("_")[2]) for label in result_dict[cur_wafer][band]["obs"]])
             except KeyError:
                 continue
 
-            closest_idx = np.argmin(np.abs(times-cur_obs["timestamp"]))
-            closest_obs = times[closest_idx]
-            closest_chi = result_dict[cur_wafer][band]["chi"][closest_idx]
-            #if np.abs(times[closest_idx]-cur_obs["timestamp"])/3600 < 24 and 100< closest_chi and closest_chi<500: #If most recent obs within a day
-            #    raw_cal = result_dict[cur_wafer][band]["raw_cal"][closest_idx]
-            #    chisq = closest_chi
-            #else:
-            raw_cal = np.median(result_dict[cur_wafer][band]["raw_cal"])
-            chisq = 999999
+
+            raw_cal = np.nanmedian(meta.abscal.raw_abscal_rj[net_flag])
             ndets = len(np.where((meta.preprocess.noise.white_noise[net_flag] != 0))[0])
 
             net_mes = 1/np.sqrt(2) * meta.preprocess.noise.white_noise[net_flag] * raw_cal * meta.det_cal.phase_to_pW[net_flag]
@@ -116,7 +117,6 @@ for i in prange(len(obs_list)):
             array_net = np.nansum((clean_nets*1e6)**(-2))**(-1/2)
 
             net_dict[cur_wafer][band]["raw_cal"].append(raw_cal)
-            net_dict[cur_wafer][band]["chi"].append(chisq)
             net_dict[cur_wafer][band]["obs"].append(cur_obs["obs_id"])
             net_dict[cur_wafer][band]["ndets"].append(ndets)
             net_dict[cur_wafer][band]["nets"].append(array_net)
