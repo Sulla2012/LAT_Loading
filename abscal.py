@@ -4,10 +4,11 @@ import numpy as np
 import pandas as pd
 
 import map_utils as mu
-from optical_loading import pwv_interp, keys_from_wafer, bandpass_interp
+from optical_loading import pwv_interp, keys_from_wafer, bandpass_interp, get_bandwidth
 from mars_temps import T_b
 
 from sotodlib import core
+import sotodlib.io.metadata as io_meta
 
 from astropy import units as u
 from astropy import constants as consts
@@ -18,7 +19,7 @@ import os
 import h5py
 import yaml
 
-def data_to_cal_factor(p_meas, beam_solid_angle, band, wafer, mars_diameter, obs_id):
+def data_to_cal_factor(p_meas, beam_solid_angle, band, wafer, mars_diameter, obs_id, bandwidth):
     fiducial_solid_angle = mu.angular_diameter_to_solid_angle(mars_diameter)
 
     timestamp = str(obs_id)
@@ -27,10 +28,8 @@ def data_to_cal_factor(p_meas, beam_solid_angle, band, wafer, mars_diameter, obs
     fill_factor = (fiducial_solid_angle / (beam_solid_angle))
     t_eff_planet = planet_temp[band] *fill_factor
     cal_factor = t_eff_planet / p_meas # K -> pW
-    
-    bandpass = bandpasses[band]
-    
-    opt_eff = ((1/(cal_factor)*u.pW/u.K)/(consts.k_B * bandpass * u.GHz)).to(1)
+        
+    opt_eff = ((1/(cal_factor)*u.pW/u.K)/(consts.k_B * bandwidth * u.GHz)).to(1)
     
     return cal_factor, opt_eff
 
@@ -40,12 +39,6 @@ fwhm_cuts = {"090": [1.8, 2.3],
              "220": [0.7, 1.1],
              "280": [0.7, 1.0],
             }
-
-bandpasses = {"090": 28.83, #Im 90 percent sure these come from LAT_MF/UHF_bands.csv but Im not sure
-              "150": 29.49,
-              "220": 55.54,
-              "280": 46.74
-             }
 
 if __name__ == '__main__':
     with open("atmosphere_eff.pk", "rb") as f:
@@ -83,6 +76,24 @@ if __name__ == '__main__':
     ])
 
     cal_dict = {}
+    
+    #make bandwidth dict for speed
+    #Note we use the site measured bandwidth for an array if available
+    #Else we use the average of all arrays at that freq (also site measured)
+    bandwidths = {}
+    for stream_id in set(stream_ids):
+        ufm = stream_id.split("_")[1]
+        if ufm not in bandwidths.keys():
+            bandwidths[ufm] = {}
+        if "mv" in ufm:
+            cur_bands = ["090", "150"]
+        elif "uv" in ufm:
+            cur_bands = ["220", "280"]
+        else:
+            raise ValueError(f"Error: ufm {ufm} is not valid")
+        for band in cur_bands:
+            bandwidths[ufm][band] = get_bandwidth(band=band, ufm=ufm)
+    
 
     for i, aman in enumerate(amans):
 
@@ -98,7 +109,6 @@ if __name__ == '__main__':
             print("No Mars data for obs {}".format(obs_id))
             continue         
         
-
         ufm_type, ufm_band = keys_from_wafer(ufm, band)
         
         fitted_fwhm = aman.data_fwhm.to(u.arcmin).value
@@ -145,8 +155,8 @@ if __name__ == '__main__':
 
         adjusted_amplitude = amp * pwv_adjust[0]
 
-        cal_factor, cal_opt_efc = data_to_cal_factor(adjusted_amplitude, data_solid_angle, band, ufm, mars_diameter, tb_time)
-        raw_factor, raw_opt_efc = data_to_cal_factor(amp, data_solid_angle, band, ufm, mars_diameter, tb_time)
+        cal_factor, cal_opt_efc = data_to_cal_factor(adjusted_amplitude, data_solid_angle, band, ufm, mars_diameter, tb_time, bandwidths[ufm][band])
+        raw_factor, raw_opt_efc = data_to_cal_factor(amp, data_solid_angle, band, ufm, mars_diameter, tb_time, bandwidths[ufm][band])
         
 
         cal_dict[str(ufm)+"_"+str(band)+"_"+str(obs_id)] = {"adj_cal": cal_factor, "raw_cal": raw_factor, "pwv":pwv_obs, "el":el_obs, 
@@ -202,6 +212,7 @@ if __name__ == '__main__':
     raw_cals_cmb = []
     data_solid_angles = []
     omegas = []
+    obs = []
 
     pwv = pwv_interp()
 
@@ -226,6 +237,7 @@ if __name__ == '__main__':
                     cur_cals = np.array(result_dict[key][sub_key]["cal"])
                     cur_raw_cals = np.array(result_dict[key][sub_key]["raw_cal"])
                     omega_data = np.array(result_dict[key][sub_key]["omega_data"])
+                    cur_obs = np.array(result_dict[key][sub_key]["obs"])
                     for j in range(len(cur_cals)):
                         cals.append(cur_cals[j])
                         raw_cals.append(cur_raw_cals[j])
@@ -234,14 +246,15 @@ if __name__ == '__main__':
                         data_freqs.append(freq)
                         data_ufms.append(ufm)
                         omegas.append(omega_data[j])
+                        obs.append(cur_obs[j][9:])
 
     data_freqs = np.array(data_freqs)
     data_ufms = np.array(data_ufms)
     cals = np.array(cals)
     raw_cals = np.array(raw_cals)
+    obs = np.array(obs, dtype=float)
 
-
-    df = pd.DataFrame({'freqs': data_freqs, 'ufms':data_ufms, 'cals': cals,'raw_cals': raw_cals,'cals_cmb':cals_cmb, 'raw_cals_cmb':raw_cals_cmb, 'omegas':omegas})
+    df = pd.DataFrame({'freqs': data_freqs, 'ufms':data_ufms, 'cals': cals,'raw_cals': raw_cals,'cals_cmb':cals_cmb, 'raw_cals_cmb':raw_cals_cmb, 'omegas':omegas, "obs":obs})
     
     #periods we care about
     keys = ["initial_alignment", "corot_slip", "post_slip_alignment"]
