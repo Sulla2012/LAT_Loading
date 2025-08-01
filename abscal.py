@@ -1,6 +1,7 @@
 from pixell import utils, enmap, bunch, reproject, colors, coordinates
 
 import numpy as np
+import pandas as pd
 
 import map_utils as mu
 from optical_loading import pwv_interp, keys_from_wafer, bandpass_interp
@@ -15,6 +16,7 @@ import datetime as dt
 import dill as pk
 import os
 import h5py
+import yaml
 
 def data_to_cal_factor(p_meas, beam_solid_angle, band, wafer, mars_diameter, obs_id):
     fiducial_solid_angle = mu.angular_diameter_to_solid_angle(mars_diameter)
@@ -22,7 +24,7 @@ def data_to_cal_factor(p_meas, beam_solid_angle, band, wafer, mars_diameter, obs
     timestamp = str(obs_id)
     planet_temp = T_b[timestamp]
     
-    fill_factor = (fiducial_solid_angle / (beam_solid_angle * 1e-6))
+    fill_factor = (fiducial_solid_angle / (beam_solid_angle))
     t_eff_planet = planet_temp[band] *fill_factor
     cal_factor = t_eff_planet / p_meas # K -> pW
     
@@ -34,7 +36,7 @@ def data_to_cal_factor(p_meas, beam_solid_angle, band, wafer, mars_diameter, obs
 
 
 fwhm_cuts = {"090": [1.8, 2.3],
-             "150": [1.3, 1.6],
+             "150": [1.2, 1.6],
              "220": [0.7, 1.1],
              "280": [0.7, 1.0],
             }
@@ -85,7 +87,7 @@ if __name__ == '__main__':
     for i, aman in enumerate(amans):
 
         obs_id = obs_ids[i].split("_")[1]
-        wafer = stream_ids[i]
+        ufm = stream_ids[i].split("_")[1]
         band = bands[i][1:]
         tb_time = 0
         for key in T_b.keys():
@@ -97,13 +99,14 @@ if __name__ == '__main__':
             continue         
         
 
-        ufm_type, ufm_band = keys_from_wafer(wafer, band)
+        ufm_type, ufm_band = keys_from_wafer(ufm, band)
         
-        fitted_fwhm = np.sqrt(aman.fwhm_dec**2 + aman.fwhm_ra**2).to(u.arcmin).value
-        data_solid_angle = aman.data_solid_angle_corr
+        fitted_fwhm = aman.data_fwhm.to(u.arcmin).value
+        data_solid_angle = aman.data_solid_angle_corr.value
         amp = aman.amp.value
         
         if fwhm_cuts[band][1] < fitted_fwhm or fitted_fwhm < fwhm_cuts[band][0]:
+            print(fwhm_cuts[band][0], fitted_fwhm, fwhm_cuts[band][1], band, ufm)
             continue        
 
         #Get pwv/el adjustment
@@ -120,7 +123,7 @@ if __name__ == '__main__':
         if pwv_obs > 2.5:
             continue
         ctx = core.Context('/so/metadata/lat/contexts/smurf_detsets.yaml')
-        meta = ctx.get_meta(paths[0].split("/")[-2])
+        meta = ctx.get_meta(obs_ids[i])
 
         el_obs = meta.obs_info.el_center
 
@@ -142,20 +145,21 @@ if __name__ == '__main__':
 
         adjusted_amplitude = amp * pwv_adjust[0]
 
-        cal_factor, cal_opt_efc = data_to_cal_factor(adjusted_amplitude, data_solid_angle, band, wafer, mars_diameter, tb_time)
-        raw_factor, raw_opt_efc = data_to_cal_factor(amp, data_solid_angle, band, wafer, mars_diameter, tb_time)
+        cal_factor, cal_opt_efc = data_to_cal_factor(adjusted_amplitude, data_solid_angle, band, ufm, mars_diameter, tb_time)
+        raw_factor, raw_opt_efc = data_to_cal_factor(amp, data_solid_angle, band, ufm, mars_diameter, tb_time)
+        
 
-        cal_dict[str(obs_id)] = {"adj_cal": cal_factor, "raw_cal": raw_factor, "pwv":pwv_obs, "el":el_obs, 
+        cal_dict[str(ufm)+"_"+str(band)+"_"+str(obs_id)] = {"adj_cal": cal_factor, "raw_cal": raw_factor, "pwv":pwv_obs, "el":el_obs, 
                                                             "omega_data": data_solid_angle, "fwhm":fitted_fwhm, "raw_opt":raw_opt_efc, "cal_opt":cal_opt_efc}
-   
+
     with open("abscals.pk", "wb") as f:
         pk.dump(cal_dict, f)
                      
     result_dict = {}
 
     for key in cal_dict.keys():
-        ufm = key.split("_")[4]
-        freq = key.split("_")[5]
+        ufm = key.split("_")[0]
+        freq = key.split("_")[1]
         if ufm in result_dict.keys():
             continue
         if "090" in freq or "150" in freq:
@@ -167,8 +171,8 @@ if __name__ == '__main__':
                                 "280":{"cal":[], "chi":[], "obs":[], "raw_cal":[], "el":[], "pwv":[], "fwhm":[], "raw_opt":[], "cal_opt":[], "omega_data":[]},
                                }
     for key in cal_dict.keys():
-        ufm = key.split("_")[4]
-        freq = key.split("_")[5][1:]
+        ufm = key.split("_")[0]
+        freq = key.split("_")[1]
         result_dict[ufm][freq]["cal"].append(cal_dict[key]["adj_cal"])
         result_dict[ufm][freq]["raw_cal"].append(cal_dict[key]["raw_cal"])
         result_dict[ufm][freq]["el"].append(cal_dict[key]["el"])
@@ -181,8 +185,114 @@ if __name__ == '__main__':
         
     today = dt.date.today()
     date_str = str(today.month).zfill(2)+str(today.day).zfill(2)+str(today.year)
+    
     with open("results_{}.pk".format(date_str), "wb") as f:
         pk.dump(result_dict, f)
-
-
     
+    #Now to write the manifest db
+    
+    #Load important times in LAT history i.e. slipage/alighnment
+    with open("/so/home/jorlo/dev/site-pipeline-configs/lat/instrument_times.yaml", "r") as file:
+        lat_times = yaml.safe_load(file)    
+    cals = []
+    raw_cals = []
+    data_freqs = []
+    data_ufms = []
+    cals_cmb = []
+    raw_cals_cmb = []
+    data_solid_angles = []
+    omegas = []
+
+    pwv = pwv_interp()
+
+    freqs = ["090", "150", "220", "280"]
+    ufms = sorted(result_dict.keys())
+
+    flavor_dict = {"090": "MF_1",
+                   "150": "MF_2",
+                   "220": "UHF_1",
+                   "280": "UHF_2"
+                  }
+    
+    for freq in freqs:
+        temp_conv = mu.temp_conv(T_B=2.725*u.Kelvin, flavor=flavor_dict[freq].split("_")[0], ch=flavor_dict[freq], kind='baseline') #Temperature for rj->cmb
+        for ufm in ufms:
+            for key in result_dict.keys():
+                if ufm not in key:
+                    continue
+                for sub_key in result_dict[key].keys():
+                    if freq not in sub_key:
+                        continue
+                    cur_cals = np.array(result_dict[key][sub_key]["cal"])
+                    cur_raw_cals = np.array(result_dict[key][sub_key]["raw_cal"])
+                    omega_data = np.array(result_dict[key][sub_key]["omega_data"])
+                    for j in range(len(cur_cals)):
+                        cals.append(cur_cals[j])
+                        raw_cals.append(cur_raw_cals[j])
+                        cals_cmb.append(cur_cals[j]*temp_conv)
+                        raw_cals_cmb.append(cur_cals[j]*temp_conv)
+                        data_freqs.append(freq)
+                        data_ufms.append(ufm)
+                        omegas.append(omega_data[j])
+
+    data_freqs = np.array(data_freqs)
+    data_ufms = np.array(data_ufms)
+    cals = np.array(cals)
+    raw_cals = np.array(raw_cals)
+
+
+    df = pd.DataFrame({'freqs': data_freqs, 'ufms':data_ufms, 'cals': cals,'raw_cals': raw_cals,'cals_cmb':cals_cmb, 'raw_cals_cmb':raw_cals_cmb, 'omegas':omegas})
+    
+    #periods we care about
+    keys = ["initial_alignment", "corot_slip", "post_slip_alignment"]
+    data = []
+
+    for key in keys:
+        #For each period, we're going to compute the average abscal for each ufm and freq
+        mfs = ["090", "150"]
+        ufs = ["220", "280"]
+        for ufm in ufms:
+            for freq in freqs:
+                if freq in mfs and "uv" in ufm: continue
+                if freq in ufs and "mv" in ufm: continue
+                if len(np.where((df.freqs == str(freq)) & (df.ufms == str(ufm)))[0]) == 0:
+                    print(freq, ufm) #Let me know if there are no obs with this array/freq
+
+                if len(np.where((df.freqs == str(freq)) & (df.ufms == str(ufm)) & (df.obs >= lat_times[key]["start"]) & (df.obs <= lat_times[key]["stop"]))[0]) == 0:
+                    #If there are no obs in this particular time range, just use the all time average for that array
+                    cur_df = df.where((df.freqs == str(freq)) & (df.ufms == str(ufm)))
+                else:   
+                    cur_df = df.where((df.freqs == str(freq)) & (df.ufms == str(ufm)) & (df.obs >= lat_times[key]["start"]) & (df.obs <= lat_times[key]["stop"]))
+                data.append(("ufm_"+str(ufm), "f"+str(freq), 
+                             float(np.nanmean(cur_df.cals)),
+                             float(np.nanmean(cur_df.raw_cals)),
+                             float(np.nanmean(cur_df.cals_cmb)), 
+                             float(np.nanmean(cur_df.raw_cals_cmb)),
+                             float(np.nanmean(cur_df.omegas)),))
+
+            data.append(("ufm_"+str(ufm), "NC", np.nan, np.nan, np.nan, np.nan, np.nan))
+
+        # Write to HDF5
+        rs = core.metadata.ResultSet(
+            keys=['dets:stream_id', 'dets:wafer.bandpass', 'abscal_rj', 'raw_abscal_rj', 'abscal_cmb', 'raw_abscal_cmb', 'beam_solid_angle'])
+        rs.rows = data
+        io_meta.write_dataset(rs, 'abscals.h5', "abscal_{}".format(key), overwrite=True)
+        
+    # Record in ManifestDb.
+    scheme = core.metadata.ManifestScheme()
+    scheme.add_range_match("obs:timestamp")
+    scheme.add_data_field('dataset')
+
+    db = core.metadata.ManifestDb(scheme=scheme)
+    db.add_entry({"obs:timestamp": (lat_times["initial_alignment"]["start"], lat_times["initial_alignment"]["stop"]),
+                  "dataset": "abscal_initial_alignment"},
+                  filename="abscals.h5")
+    db.add_entry({"obs:timestamp": (lat_times["corot_slip"]["start"], lat_times["corot_slip"]["stop"]),
+                  "dataset": "abscal_corot_slip"},
+                  filename="abscals.h5")
+    db.add_entry({"obs:timestamp": (lat_times["post_slip_alignment"]["start"], lat_times["post_slip_alignment"]["stop"]),
+                  "dataset": "abscal_post_slip_alignment"},
+                  filename="abscals.h5")
+
+    #db.add_entry({'dataset': 'abscal'}, filename='abscals.h5')
+    db.to_file('db.sqlite')
