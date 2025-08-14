@@ -19,14 +19,11 @@ import os
 import h5py
 import yaml
 
-def data_to_cal_factor(p_meas, beam_solid_angle, band, wafer, mars_diameter, obs_id, bandwidth):
-    fiducial_solid_angle = mu.angular_diameter_to_solid_angle(mars_diameter)
-
-    timestamp = str(obs_id)
-    planet_temp = T_b[timestamp]
+def data_to_cal_factor(p_meas, beam_solid_angle, planet_diameter, bandwidth, planet_temp):
+    fiducial_solid_angle = mu.angular_diameter_to_solid_angle(planet_diameter)
     
     fill_factor = (fiducial_solid_angle / (beam_solid_angle))
-    t_eff_planet = planet_temp[band] *fill_factor
+    t_eff_planet = planet_temp * fill_factor
     cal_factor = t_eff_planet / p_meas # K -> pW
         
     opt_eff = ((1/(cal_factor)*u.pW/u.K)/(consts.k_B * bandwidth * u.GHz)).to(1)
@@ -34,10 +31,10 @@ def data_to_cal_factor(p_meas, beam_solid_angle, band, wafer, mars_diameter, obs
     return cal_factor, opt_eff
 
 
-fwhm_cuts = {"090": [1.8, 2.3],
-             "150": [1.2, 1.6],
-             "220": [0.7, 1.1],
-             "280": [0.7, 1.0],
+fwhm_cuts = {"090": [1.7, 2.3],
+             "150": [1.1, 1.6],
+             "220": [0.7, 1.2],
+             "280": [0.65, 1.0],
             }
 
 if __name__ == '__main__':
@@ -94,26 +91,23 @@ if __name__ == '__main__':
         for band in cur_bands:
             bandwidths[ufm][band] = get_bandwidth(band=band, ufm=ufm)
     
+    ctx = core.Context('/so/metadata/lat/contexts/smurf_detsets.yaml')
 
     for i, aman in enumerate(amans):
 
         obs_id = obs_ids[i].split("_")[1]
         ufm = stream_ids[i].split("_")[1]
-        band = bands[i][1:]
-        tb_time = 0
-        for key in T_b.keys():
-            if np.abs(int(obs_id) - int(key)) <= 300: #Within 5 minutes is OK
-                tb_time = key
-                break
-        if not tb_time:
-            print("No Mars data for obs {}".format(obs_id))
-            continue         
+        band = bands[i][1:]     
         
         ufm_type, ufm_band = keys_from_wafer(ufm, band)
         
         fitted_fwhm = aman.data_fwhm.to(u.arcmin).value
         data_solid_angle = aman.data_solid_angle_corr.value
-        amp = aman.amp.value
+        
+        if "amp_outer" in aman.keys():
+            amp = aman.amp.value + aman.amp_outer.value
+        else:
+            amp = aman.amp.value
         
         if fwhm_cuts[band][1] < fitted_fwhm or fitted_fwhm < fwhm_cuts[band][0]:
             print(fwhm_cuts[band][0], fitted_fwhm, fwhm_cuts[band][1], band, ufm)
@@ -132,7 +126,6 @@ if __name__ == '__main__':
             continue
         if pwv_obs > 2.5:
             continue
-        ctx = core.Context('/so/metadata/lat/contexts/smurf_detsets.yaml')
         meta = ctx.get_meta(obs_ids[i])
 
         el_obs = meta.obs_info.el_center
@@ -144,23 +137,54 @@ if __name__ == '__main__':
         try:
             obs_key_el = [el for el in atmosphere_eff['LF']["LF_1"].keys() if np.abs(int(el) - el_obs) < 2.5][0]
         except:
-            print("El {} for obs {} out of range".format(el_obs, paths[0].split("/")[-2]))
+            print("El {} for obs {} out of range".format(el_obs, obs_ids[i]))
             continue
             
         t_atm_obs = atmosphere_eff[ufm_type][ufm_band][obs_key_el][obs_idx_pwv]
         t_atm_fiducial = atmosphere_eff[ufm_type][ufm_band][el_key][pwv_idx]
         pwv_adjust = t_atm_fiducial / t_atm_obs
 
-        mars_diameter = mu.get_planet_diameter(int(obs_id), "Mars") # arcsec, we are using exact temperatures
-
         adjusted_amplitude = amp * pwv_adjust[0]
 
-        cal_factor, cal_opt_efc = data_to_cal_factor(adjusted_amplitude, data_solid_angle, band, ufm, mars_diameter, tb_time, bandwidths[ufm][band])
-        raw_factor, raw_opt_efc = data_to_cal_factor(amp, data_solid_angle, band, ufm, mars_diameter, tb_time, bandwidths[ufm][band])
+        tags = ctx.obsdb.get(obs_ids[i], tags=True)["tags"]
         
+        if "mars" in tags:
+            planet="mars"
+            tb_time = 0
+            for key in T_b.keys():
+                if np.abs(int(obs_id) - int(key)) <= 300: #Within 5 minutes is OK
+                    tb_time = key
+                    break
+            if not tb_time:
+                print("No Mars data for obs {}".format(obs_id))
+                continue    
+            planet_temp = T_b[tb_time][band]
+            
+        elif "saturn" in tags:
+            planet="saturn"
+            if band == "090" or band == "150":
+                planet_temp = 143
+            elif band == "220" or band == "280":
+                plenet_temp = 0
+            else:
+                print("Error: invalid freq {}".format(freq))
+                continue
+        else:
+            print("Error: no planet in tags: {}".format(tags[-1]))
+            continue
+            
+        planet_diameter = mu.get_planet_diameter(int(obs_id), planet.capitalize()) # arcsec, we are using exact temperatures
 
+        cal_factor, cal_opt_efc = data_to_cal_factor(p_meas=adjusted_amplitude, beam_solid_angle=data_solid_angle,
+                                                     planet_diameter=planet_diameter, bandwidth=bandwidths[ufm][band], planet_temp=planet_temp)
+        raw_factor, raw_opt_efc = data_to_cal_factor(p_meas=amp, beam_solid_angle=data_solid_angle,
+                                                     planet_diameter=planet_diameter, bandwidth=bandwidths[ufm][band], planet_temp=planet_temp)
+        
+        if band == "220" or band == "280" and planet=="saturn":
+            print(planet_temp, raw_factor)
         cal_dict[str(ufm)+"_"+str(band)+"_"+str(obs_id)] = {"adj_cal": cal_factor, "raw_cal": raw_factor, "pwv":pwv_obs, "el":el_obs, 
-                                                            "omega_data": data_solid_angle, "fwhm":fitted_fwhm, "raw_opt":raw_opt_efc, "cal_opt":cal_opt_efc}
+                                                            "omega_data": data_solid_angle, "fwhm":fitted_fwhm, "raw_opt":raw_opt_efc, 
+                                                            "cal_opt":cal_opt_efc, "source":planet}
 
     with open("abscals.pk", "wb") as f:
         pk.dump(cal_dict, f)
@@ -173,12 +197,12 @@ if __name__ == '__main__':
         if ufm in result_dict.keys():
             continue
         if "090" in freq or "150" in freq:
-            result_dict[ufm] = {"090":{"cal":[], "chi":[], "obs":[], "raw_cal":[], "el":[], "pwv":[], "fwhm":[], "raw_opt":[], "cal_opt":[], "omega_data":[]},
-                                "150":{"cal":[], "chi":[], "obs":[], "raw_cal":[], "el":[], "pwv":[], "fwhm":[], "raw_opt":[], "cal_opt":[], "omega_data":[]}
+            result_dict[ufm] = {"090":{"cal":[], "chi":[], "obs":[], "raw_cal":[], "el":[], "pwv":[], "fwhm":[], "raw_opt":[], "cal_opt":[], "omega_data":[], "source":[]},
+                                "150":{"cal":[], "chi":[], "obs":[], "raw_cal":[], "el":[], "pwv":[], "fwhm":[], "raw_opt":[], "cal_opt":[], "omega_data":[], "source":[]}
                                }
         else:
-            result_dict[ufm] = {"220":{"cal":[], "chi":[], "obs":[], "raw_cal":[], "el":[], "pwv":[], "fwhm":[], "raw_opt":[], "cal_opt":[], "omega_data":[]},
-                                "280":{"cal":[], "chi":[], "obs":[], "raw_cal":[], "el":[], "pwv":[], "fwhm":[], "raw_opt":[], "cal_opt":[], "omega_data":[]},
+            result_dict[ufm] = {"220":{"cal":[], "chi":[], "obs":[], "raw_cal":[], "el":[], "pwv":[], "fwhm":[], "raw_opt":[], "cal_opt":[], "omega_data":[], "source":[]},
+                                "280":{"cal":[], "chi":[], "obs":[], "raw_cal":[], "el":[], "pwv":[], "fwhm":[], "raw_opt":[], "cal_opt":[], "omega_data":[], "source":[]},
                                }
     for key in cal_dict.keys():
         ufm = key.split("_")[0]
@@ -192,6 +216,7 @@ if __name__ == '__main__':
         result_dict[ufm][freq]["raw_opt"].append(cal_dict[key]["raw_opt"])
         result_dict[ufm][freq]["cal_opt"].append(cal_dict[key]["cal_opt"])
         result_dict[ufm][freq]["omega_data"].append(cal_dict[key]["omega_data"])
+        result_dict[ufm][freq]["source"].append(cal_dict[key]["source"])
         
     today = dt.date.today()
     date_str = str(today.month).zfill(2)+str(today.day).zfill(2)+str(today.year)
