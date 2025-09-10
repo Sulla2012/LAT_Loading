@@ -103,7 +103,7 @@ for i in range(start_index, len(obs_list)):
             raw_cal = np.nanmedian(meta.abscal.raw_abscal_rj[net_flag])
             ndets = len(np.where((meta.preprocess.noise.white_noise[net_flag] != 0))[0])
 
-            net_mes = 1/np.sqrt(2) * meta.preprocess.noise.white_noise[net_flag] * raw_cal * meta.det_cal.phase_to_pW[net_flag]
+            net_mes = 1/np.sqrt(2) * meta.preprocess.noise.white_noise[net_flag] * raw_cal 
             clean_nets = []
             for net in net_mes:
                 if net*1e6 > 0:
@@ -117,7 +117,7 @@ for i in range(start_index, len(obs_list)):
             net_dict[cur_wafer][band]["nets"].append(array_net)
             net_dict[cur_wafer][band]["pwv"].append(pwv(cur_obs["timestamp"]))
             net_dict[cur_wafer][band]["el"].append(meta.obs_info.el_center)
-            net_dict[cur_wafer][band]["neps"].append(meta.preprocess.noise.white_noise[net_flag] * meta.det_cal.phase_to_pW[net_flag])
+            net_dict[cur_wafer][band]["neps"].append(meta.preprocess.noise.white_noise[net_flag])
             net_dict[cur_wafer][band]["phiconv"].append(meta.det_cal.phase_to_pW[net_flag]) 
             
     if i % 100 == 0:
