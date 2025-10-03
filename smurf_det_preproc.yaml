@@ -22,8 +22,8 @@ metadata:
     label: wafer_info
     det_info: true
     on_missing: fail
-#  - db: '{manifestdir}/det_cal/v0/det_cal.sqlite'
-  - db: '/so/metadata/lat/manifests/det_cal/lat_det_cal_250515m/det_cal.sqlite'
+  #- db: '{manifestdir}/det_cal/v0/det_cal.sqlite' #old detcals
+  - db: '{manifestdir}/det_cal/lat_det_cal_250515m/det_cal.sqlite' #tommy detcals
     label: det_cal
     unpack: det_cal
     # on_missing: fail  ## work-around for variable mask
@@ -32,8 +32,11 @@ metadata:
     label: focal_plane
     unpack: focal_plane
     on_missing: fail
-  - db: '/so/scratch/LAT_files/catchup_20250505/process_archive.sqlite'
-    name: 'preprocess'
+  #- db: '/so/scratch/LAT_files/catchup_20250505/process_archive.sqlite'  #Old preprocessing
+   # name: 'preprocess'
+  - db: '{manifestdir}/preprocess/lat_preprocess_cmb_240409m/process_archive.sqlite'
+    label: preprocess
+    unpack: preprocess
   - db: '/so/home/jorlo/dev/LAT_analysis/db.sqlite'
     name: 'abscal'
 
