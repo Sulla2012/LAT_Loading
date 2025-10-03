@@ -31,9 +31,9 @@ except:
         if ufm in abscal_dict.keys():
             continue
         if "090" in freq or "150" in freq:
-            net_dict[ufm] = {"090":{"chi":[], "obs":[], "ndets":[], "nets":[], "raw_cal":[], "el":[], "pwv":[], "neps":[], "phiconv":[]}, "150":{"chi":[], "obs":[], "ndets":[], "nets":[], "raw_cal":[], "el":[], "pwv":[], "neps":[], "phiconv":[]}}
+            net_dict[ufm] = {"090":{"obs":[], "ndets":[], "nets":[], "raw_cal":[], "el":[], "pwv":[], "neps":[], "phiconv":[]}, "150":{"obs":[], "ndets":[], "nets":[], "raw_cal":[], "el":[], "pwv":[], "neps":[], "phiconv":[]}}
         else:
-            net_dict[ufm] = {"220":{"chi":[], "obs":[], "ndets":[], "nets":[], "raw_cal":[], "el":[], "pwv":[], "neps":[], "phiconv":[]}, "280":{"chi":[], "obs":[], "ndets":[], "nets":[], "raw_cal":[], "el":[], "pwv":[], "neps":[], "phiconv":[]}}
+            net_dict[ufm] = {"220":{"obs":[], "ndets":[], "nets":[], "raw_cal":[], "el":[], "pwv":[], "neps":[], "phiconv":[]}, "280":{"obs":[], "ndets":[], "nets":[], "raw_cal":[], "el":[], "pwv":[], "neps":[], "phiconv":[]}}
     
 ctx = core.Context('./smurf_det_preproc.yaml')
 
@@ -53,6 +53,12 @@ else:
 for i in range(start_index, len(obs_list)):
     cur_obs = obs_list[i]
     wafers = cur_obs["stream_ids_list"].split(",")
+    
+    if i % 100 == 0:
+        net_dict["index"] = i
+        print("Index: ", net_dict["index"])
+        with open("nets.pk", "wb") as f:
+            pk.dump(net_dict, f)
     
     try:
         meta = ctx.get_meta(cur_obs["obs_id"])
@@ -120,11 +126,9 @@ for i in range(start_index, len(obs_list)):
             net_dict[cur_wafer][band]["neps"].append(meta.preprocess.noise.white_noise[net_flag])
             net_dict[cur_wafer][band]["phiconv"].append(meta.det_cal.phase_to_pW[net_flag]) 
             
-    if i % 100 == 0:
-        net_dict["index"] = i
-        print("Index: ", net_dict["index"])
-        with open("nets.pk", "wb") as f:
-            pk.dump(net_dict, f)
+            
+            
+print("Final Dump")
             
 with open("nets.pk", "wb") as f:
     pk.dump(net_dict, f)

@@ -354,6 +354,9 @@ def fit_gauss_pointing(imap, ivar, pixmap, make_plots=True):
     fit_sigma = arcmin2rad(np.sqrt(popt[3]) * mult_factor)
     fit_solid_angle = 2 * np.pi * (fit_sigma ** 2) * (1e6)
     # For plotting the fits
+    
+    chisred = np.sum((imap-data_fitted)**2/(sigma**2))/imap.shape[0]**2
+    
     if make_plots:
         plt.subplots(1, 3, figsize=(13, 3))
         plt.subplot(1, 3, 1)
@@ -398,7 +401,8 @@ def fit_gauss_pointing(imap, ivar, pixmap, make_plots=True):
         plt.subplots_adjust(wspace=0.55)
         plt.show()
         
-    chisred = np.sum((imap-data_fitted)**2/(sigma**2))/imap.shape[0]**2
+        return popt[2], shift_x, shift_y, fwhm, np.max(np.array([data_solid_angle, fit_solid_angle])), chisred, popt, pcov, radii_data, means_data, means_fit
+        
 
     return popt[2], shift_x, shift_y, fwhm, np.max(np.array([data_solid_angle, fit_solid_angle])), chisred, popt, pcov
 
