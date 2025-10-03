@@ -12,12 +12,15 @@ import sotodlib.io.metadata as io_meta
 
 from astropy import units as u
 from astropy import constants as consts
+from astropy.convolution import convolve, Gaussian2DKernel
 
 import datetime as dt
 import dill as pk
 import os
 import h5py
 import yaml
+from glob import glob
+import copy
 
 def data_to_cal_factor(p_meas, beam_solid_angle, planet_diameter, bandwidth, planet_temp):
     fiducial_solid_angle = mu.angular_diameter_to_solid_angle(planet_diameter)
@@ -45,6 +48,10 @@ if __name__ == '__main__':
     fiducial_pwv = 1 # mm
     el_key = "50" #hardcoded :(
     pwv = pwv_interp()
+    
+    #load matt hasslefield type beams. Unfortunately these are in two locations,
+    #this somewhat awkward code block correctly loads all beams from both
+    #dirs but doesn't load beams
 
     fpath="/so/home/saianeesh/data/beams/lat/source_maps/per_obs/fits/beam_pars.h5"
     f = h5py.File(fpath, mode="r")                                         
@@ -58,19 +65,58 @@ if __name__ == '__main__':
                 obs_ids += [o]                              
                 times += [float(o.split("_")[1])]            
                 stream_ids += [s]                              
-                bands += [b]                                 
-
+                bands += [b]  
     limit_bands = ["f090", "f150", "f220", "f280"]            
     msk = np.isin(bands, limit_bands)                         
     obs_ids = np.array(obs_ids)[msk]                         
     times = np.array(times)[msk]                             
     stream_ids = np.array(stream_ids)[msk]                   
-    bands = np.array(bands)[msk]                            
-
+    bands = np.array(bands)[msk]    
+    
     amans = np.array([
         core.AxisManager.load(f[os.path.join(o, s, b)])
         for o, s, b in zip(obs_ids, stream_ids, bands)
     ])
+    
+                
+    fpath="/so/home/saianeesh/data/beams/lat/source_maps/pointing_model/fits/beam_pars.h5"
+    f = h5py.File(fpath, mode="r")                                                                                                                                                                                                                                                              
+    obs_ids_2 = []                                            
+    times_2 = []                                              
+    stream_ids_2 = []                                         
+    bands_2 = []     
+
+    for o in f.keys():                                                                                                                                                                                                                                                                          
+        for s in f[o].keys():                                                                                                                                                                                                                                                                   
+            for b in f[o][s].keys(): 
+                keep = True
+                for i in range(len(obs_ids)):
+                    if obs_ids[i] == o and stream_ids[i] == s and bands[i] == b:
+                        keep = False
+                        continue
+                if keep:
+                    obs_ids_2 += [o]                                                                                                                                                                                                                                                                  
+                    times_2 += [float(o.split("_")[1])]                                                                                                                                                                                                                                               
+                    stream_ids_2 += [s]                                                                                                                                                                                                                                                               
+                    bands_2 += [b] 
+    
+    limit_bands = ["f090", "f150", "f220", "f280"]            
+    msk = np.isin(bands_2, limit_bands)                         
+    obs_ids_2 = np.array(obs_ids_2)[msk]                         
+    times_2 = np.array(times_2)[msk]                             
+    stream_ids_2 = np.array(stream_ids_2)[msk]                   
+    bands_2 = np.array(bands_2)[msk]                            
+
+    amans_2 = np.array([
+        core.AxisManager.load(f[os.path.join(o, s, b)])
+        for o, s, b in zip(obs_ids_2, stream_ids_2, bands_2)
+    ])
+    
+    obs_ids = np.append(obs_ids, obs_ids_2)
+    times = np.append(times, times_2)
+    stream_ids = np.append(stream_ids, stream_ids_2)
+    bands = np.append(bands, bands_2)
+    amans = np.append(amans, amans_2)
 
     cal_dict = {}
     
@@ -92,13 +138,43 @@ if __name__ == '__main__':
             bandwidths[ufm][band] = get_bandwidth(band=band, ufm=ufm)
     
     ctx = core.Context('/so/metadata/lat/contexts/smurf_detsets.yaml')
+    
+    path = "/so/home/saianeesh/data/beams/lat/source_maps/per_obs/"
+
+    mars_paths = glob(path+"mars/*/*/*_solved.fits")
+    saturn_paths = glob(path+"saturn/*/*/*_solved.fits")
+    arrays = []
+
+    for path in mars_paths:
+        arrays.append(path.split("/")[-1].split("_")[5])
+    arrays = set(arrays)
+
+
+    radii_saturn = {array:{} for array in arrays}
+    means_datas_saturn = {array:{} for array in arrays}
+    means_fits_saturn = {array:{} for array in arrays}
+
+    for array in arrays:
+        for path in mars_paths:
+            if array in path:
+                freq = path.split("/")[-1].split("_")[6]
+                if freq == "f090" or freq == "f150":
+                    radii_saturn[array] = {"f090":[], "f150":[]}
+                    means_datas_saturn[array] = {"f090":[], "f150":[]}
+                    means_fits_saturn[array] = {"f090":[], "f150":[]}
+                elif freq == "f220" or freq == "f280":
+                    radii_saturn[array] = {"f220":[], "f280":[]}
+                    means_datas_saturn[array] = {"f220":[], "f280":[]}
+                    means_fits_saturn[array] = {"f220":[], "f280":[]}
+                break
+    radii_mars = copy.deepcopy(radii_saturn)
+    means_datas_mars = copy.deepcopy(means_datas_saturn)
+    means_fits_mars = copy.deepcopy(means_fits_saturn)
 
     for i, aman in enumerate(amans):
-
         obs_id = obs_ids[i].split("_")[1]
         ufm = stream_ids[i].split("_")[1]
         band = bands[i][1:]     
-        
         ufm_type, ufm_band = keys_from_wafer(ufm, band)
         
         fitted_fwhm = aman.data_fwhm.to(u.arcmin).value
@@ -162,17 +238,21 @@ if __name__ == '__main__':
             
         elif "saturn" in tags:
             planet="saturn"
-            if band == "090" or band == "150":
-                planet_temp = 143
-            elif band == "220" or band == "280":
-                plenet_temp = 0
+            if band == "090":
+                planet_temp = 142.9
+            elif band == "150":
+                planet_temp = 142.6
+            elif band == "220":
+                planet_temp = 139.7
+            elif band == "280":
+                planet_temp = 138.7
             else:
                 print("Error: invalid freq {}".format(freq))
                 continue
         else:
             print("Error: no planet in tags: {}".format(tags[-1]))
             continue
-            
+
         planet_diameter = mu.get_planet_diameter(int(obs_id), planet.capitalize()) # arcsec, we are using exact temperatures
 
         cal_factor, cal_opt_efc = data_to_cal_factor(p_meas=adjusted_amplitude, beam_solid_angle=data_solid_angle,
@@ -180,14 +260,56 @@ if __name__ == '__main__':
         raw_factor, raw_opt_efc = data_to_cal_factor(p_meas=amp, beam_solid_angle=data_solid_angle,
                                                      planet_diameter=planet_diameter, bandwidth=bandwidths[ufm][band], planet_temp=planet_temp)
         
-        if band == "220" or band == "280" and planet=="saturn":
-            print(planet_temp, raw_factor)
+        if raw_factor >= 40 and planet == "saturn":
+            continue #Some of the saturn observations are accidentally of Neptune, leading to very high abscals (when using Saturn temp)
+                     #Matt is working on a real fix but for now since the Neptune amp is >10x lower, a cut on the abscal is safe
         cal_dict[str(ufm)+"_"+str(band)+"_"+str(obs_id)] = {"adj_cal": cal_factor, "raw_cal": raw_factor, "pwv":pwv_obs, "el":el_obs, 
                                                             "omega_data": data_solid_angle, "fwhm":fitted_fwhm, "raw_opt":raw_opt_efc, 
                                                             "cal_opt":cal_opt_efc, "source":planet}
+        
+        #Make profiles
+        solved_file = "/so/home/saianeesh/data/beams/lat/source_maps/per_obs/{}/".format(planet)+str(obs_id[:5])+"/"+str(obs_ids[i])+"/"+str(obs_ids[i])+"_"+str(stream_ids[i])+"_"+str(bands[i])+"_solved.fits"
+        weight_file = solved_file.replace("solved", "weights")
+        binned_file = solved_file.replace("solved", "binned")
+        try:
+            solved = enmap.read_map(solved_file)[0]
+            weights = enmap.read_map(weight_file)[0][0]
+            binned = enmap.read_map(binned_file)[0]
+
+        except: continue
+            
+        kernel = Gaussian2DKernel(5)
+        smoothed = convolve(solved, kernel)
+        cent = np.argmax(smoothed)
+        cent = np.unravel_index(cent, solved.shape)
+        pixsize = np.abs(solved.wcs.wcs.cdelt[0]*60)
+
+        r = 20
+        solved = solved[cent[0]-r:cent[0]+r,cent[1]-r:cent[1]+r]
+        weights = weights[cent[0]-r:cent[0]+r,cent[1]-r:cent[1]+r]
+        binned = binned[cent[0]-r:cent[0]+r,cent[1]-r:cent[1]+r]
+        #plt.imshow(solved)
+        #plt.colorbar()
+        pixmap = enmap.pixmap(solved.shape, solved.wcs)
+        fitted_amp, shift_x, shift_y, fitted_fwhm, data_solid_angle, chisred, popt, pcov, radii_data, means_data, means_fit = mu.fit_gauss_pointing(solved, weights, pixmap, make_plots=True)
+        
+        if planet == "mars":
+            radii_mars[ufm][bands[i]].append(radii_data)
+            means_datas_mars[ufm][bands[i]].append(means_data)
+            means_fits_mars[ufm][bands[i]].append(means_fit)
+        elif planet == "saturn":
+            radii_saturn[ufm][bands[i]].append(radii_data)
+            means_datas_saturn[ufm][bands[i]].append(means_data)
+            means_fits_saturn[ufm][bands[i]].append(means_fit)
+        else:
+            continue
 
     with open("abscals.pk", "wb") as f:
         pk.dump(cal_dict, f)
+        
+    rad_dict = {"rad_sat":radii_saturn, "data_sat":means_datas_saturn, "fit_sat":means_fits_saturn, "rad_mars":radii_mars, "data_mars":means_datas_mars, "fit_mars":means_fits_mars}
+    with open("mars_saturn.pk", "wb") as f:
+        pk.dump(rad_dict, f)
                      
     result_dict = {}
 
