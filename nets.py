@@ -92,6 +92,8 @@ for i in range(start_index, len(obs_list)):
                     band = "220"
                 elif ufm_band == 2:
                     band = "280"
+
+            meta = ctx.get_meta(cur_obs["obs_id"], dets={"dets:wafer_slot":wafer, "dets:wafer.bandpass":str(f)+str(band)})
             wafer_flag = np.array([cur_wafer in ufm for ufm in meta.det_info.stream_id])
             
             if len(wafer_flag) == 0:
