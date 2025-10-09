@@ -50,9 +50,10 @@ if "index" in net_dict.keys():
 else:
     start_index = 0
 
+no_preproc = []
+    
 for i in range(start_index, len(obs_list)):
     cur_obs = obs_list[i]
-    wafers = cur_obs["stream_ids_list"].split(",")
     
     if i % 100 == 0:
         net_dict["index"] = i
@@ -60,11 +61,14 @@ for i in range(start_index, len(obs_list)):
         with open("nets.pk", "wb") as f:
             pk.dump(net_dict, f)
     
-    try:
-        meta = ctx.get_meta(cur_obs["obs_id"])
+    try: #Much faster than ctx.get_meta
+        det_info = ctx.get_det_info(cur_obs['obs_id'])
     except:
         print("No meta data for obs {}".format(cur_obs["obs_id"]))
         continue
+    wafers = np.unique(det_info["stream_id"])
+    bands = np.unique(det_info["wafer.bandpass"])
+    bands = np.array([b[1:] for b in bands if len(b) > 1 and b[0] == 'f' ])
     
     for j in range(len(wafers)):
         cur_wafer = wafers[j].split("_")[-1]
@@ -80,20 +84,26 @@ for i in range(start_index, len(obs_list)):
         if cur_wafer not in result_dict.keys():
             print("No abscal for ufm {}".format(cur_wafer))
             continue
-
-        for ufm_band in [1,2]:
+   
+        for band in bands:
             if "mv" in cur_wafer:
-                if ufm_band == 1:
-                    band = "090"
-                elif ufm_band == 2:
-                    band = "150"
+                if band == "090":
+                    ufm_band = 1
+                elif band == "150":
+                    ufm_band = 2
             if "uv" in cur_wafer:
-                if ufm_band == 1:
-                    band = "220"
-                elif ufm_band == 2:
-                    band = "280"
-
-            meta = ctx.get_meta(cur_obs["obs_id"], dets={"dets:wafer_slot":wafer, "dets:wafer.bandpass":str(f)+str(band)})
+                if band == "220":
+                    ufm_band = 1
+                elif band == "280":
+                    ufm_band = 2
+                
+            try:    
+                meta = ctx.get_meta(cur_obs["obs_id"], dets={"dets:stream_id":str("ufm_")+str(cur_wafer), "dets:wafer.bandpass":str("f")+str(band)})
+            except:
+                print("No meta data for obs {}".format(cur_obs["obs_id"]))
+                no_preproc.append(cur_obs["obs_id"])
+                continue
+                
             wafer_flag = np.array([cur_wafer in ufm for ufm in meta.det_info.stream_id])
             
             if len(wafer_flag) == 0:
@@ -134,3 +144,6 @@ print("Final Dump")
             
 with open("nets.pk", "wb") as f:
     pk.dump(net_dict, f)
+    
+with open("no_preproc.txt", 'w') as f:
+    f.write('\n'.join(no_preproc))    
