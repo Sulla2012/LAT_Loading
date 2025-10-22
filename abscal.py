@@ -405,9 +405,10 @@ if __name__ == '__main__':
     
     #periods we care about
     keys = ["initial_alignment", "corot_slip", "post_slip_alignment"]
-    data = []
 
     for key in keys:
+        data = []
+
         #For each period, we're going to compute the average abscal for each ufm and freq
         mfs = ["090", "150"]
         ufs = ["220", "280"]
