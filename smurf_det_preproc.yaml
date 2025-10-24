@@ -32,11 +32,11 @@ metadata:
     label: focal_plane
     unpack: focal_plane
     on_missing: fail
-  #- db: '/so/scratch/LAT_files/catchup_20250505/process_archive.sqlite'  #Old preprocessing
-   # name: 'preprocess'
   - db: '{manifestdir}/preprocess/lat_preprocess_cmb_240409m/process_archive.sqlite'
     label: preprocess
     unpack: preprocess
   - db: '/so/home/jorlo/dev/LAT_analysis/db.sqlite'
     name: 'abscal'
+#  - db: '{manifestdir}/abscal/lat_abscal_250602/db.sqlite'
+#    name: 'abscal'
 
