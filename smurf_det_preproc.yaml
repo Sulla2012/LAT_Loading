@@ -35,6 +35,9 @@ metadata:
   - db: '{manifestdir}/preprocess/lat_preprocess_cmb_240409m/process_archive.sqlite'
     label: preprocess
     unpack: preprocess
+    drop_fields:
+      - frequency_cutoffs
+      - gain_avg
   - db: '/so/home/jorlo/dev/LAT_analysis/db.sqlite'
     name: 'abscal'
 #  - db: '{manifestdir}/abscal/lat_abscal_250602/db.sqlite'
