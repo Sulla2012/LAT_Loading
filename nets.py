@@ -1,4 +1,5 @@
 from sotodlib import core
+from sotodlib.tod_ops.flags import get_det_bias_flags
 
 import datetime as dt
 
@@ -38,7 +39,7 @@ except:
 ctx = core.Context('./smurf_det_preproc.yaml')
 
 start = dt.datetime(2025,4,17, tzinfo=dt.timezone.utc)
-end = dt.datetime(2025,8,21, tzinfo=dt.timezone.utc)
+end = dt.datetime(2025,11,21, tzinfo=dt.timezone.utc)
 obs_list = ctx.obsdb.query(
     f"{end.timestamp()} > timestamp and timestamp > {start.timestamp()} and type=='obs' and subtype=='cmb'"
 )
@@ -103,7 +104,8 @@ for i in range(start_index, len(obs_list)):
                 print("No meta data for obs {}".format(cur_obs["obs_id"]))
                 no_preproc.append(cur_obs["obs_id"])
                 continue
-                
+            flags = get_det_bias_flags(meta).det_bias_flags    
+            meta.restrict("dets", ~core.flagman.has_any_cuts(flags))
             wafer_flag = np.array([cur_wafer in ufm for ufm in meta.det_info.stream_id])
             
             if len(wafer_flag) == 0:
@@ -124,7 +126,7 @@ for i in range(start_index, len(obs_list)):
             net_mes = 1/np.sqrt(2) * meta.preprocess.noise.white_noise[net_flag] * raw_cal 
             clean_nets = []
             for net in net_mes:
-                if net*1e6 > 0:
+                if net*1e6 > 100:
                     clean_nets.append(net)
             clean_nets = np.array(clean_nets)
             array_net = np.nansum((clean_nets*1e6)**(-2))**(-1/2)
