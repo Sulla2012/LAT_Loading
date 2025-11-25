@@ -40,6 +40,12 @@ fwhm_cuts = {"090": [1.7, 2.3],
              "280": [0.65, 1.0],
             }
 
+beam_volume_cuts = {"090": [1e-7, 8e-7],
+                    "150": [1e-7, 8e-7],
+                    "220": [2e-8, 2e-7],
+                    "280": [2e-8, 2e-7],
+                }
+
 if __name__ == '__main__':
     with open("atmosphere_eff.pk", "rb") as f:
         atmosphere_eff = pk.load(f)
@@ -48,12 +54,13 @@ if __name__ == '__main__':
     fiducial_pwv = 1 # mm
     el_key = "50" #hardcoded :(
     pwv = pwv_interp()
-    
+
     #load matt hasslefield type beams. Unfortunately these are in two locations,
     #this somewhat awkward code block correctly loads all beams from both
     #dirs but doesn't load beams
 
-    fpath="/so/home/saianeesh/data/beams/lat/source_maps/per_obs/fits/beam_pars.h5"
+    #fpath="/so/home/saianeesh/data/beams/lat/source_maps/per_obs/fits/beam_pars.h5"
+    fpath = "/so/home/saianeesh/data/beams/lat_old/source_maps/pointing_model/fits/beam_pars.h5"
     f = h5py.File(fpath, mode="r")                                         
     obs_ids = []                                            
     times = []                                              
@@ -72,54 +79,15 @@ if __name__ == '__main__':
     times = np.array(times)[msk]                             
     stream_ids = np.array(stream_ids)[msk]                   
     bands = np.array(bands)[msk]    
-    
+
     amans = np.array([
         core.AxisManager.load(f[os.path.join(o, s, b)])
         for o, s, b in zip(obs_ids, stream_ids, bands)
     ])
-    
-                
-    fpath="/so/home/saianeesh/data/beams/lat/source_maps/pointing_model/fits/beam_pars.h5"
-    f = h5py.File(fpath, mode="r")                                                                                                                                                                                                                                                              
-    obs_ids_2 = []                                            
-    times_2 = []                                              
-    stream_ids_2 = []                                         
-    bands_2 = []     
 
-    for o in f.keys():                                                                                                                                                                                                                                                                          
-        for s in f[o].keys():                                                                                                                                                                                                                                                                   
-            for b in f[o][s].keys(): 
-                keep = True
-                for i in range(len(obs_ids)):
-                    if obs_ids[i] == o and stream_ids[i] == s and bands[i] == b:
-                        keep = False
-                        continue
-                if keep:
-                    obs_ids_2 += [o]                                                                                                                                                                                                                                                                  
-                    times_2 += [float(o.split("_")[1])]                                                                                                                                                                                                                                               
-                    stream_ids_2 += [s]                                                                                                                                                                                                                                                               
-                    bands_2 += [b] 
-    
-    limit_bands = ["f090", "f150", "f220", "f280"]            
-    msk = np.isin(bands_2, limit_bands)                         
-    obs_ids_2 = np.array(obs_ids_2)[msk]                         
-    times_2 = np.array(times_2)[msk]                             
-    stream_ids_2 = np.array(stream_ids_2)[msk]                   
-    bands_2 = np.array(bands_2)[msk]                            
-
-    amans_2 = np.array([
-        core.AxisManager.load(f[os.path.join(o, s, b)])
-        for o, s, b in zip(obs_ids_2, stream_ids_2, bands_2)
-    ])
-    
-    obs_ids = np.append(obs_ids, obs_ids_2)
-    times = np.append(times, times_2)
-    stream_ids = np.append(stream_ids, stream_ids_2)
-    bands = np.append(bands, bands_2)
-    amans = np.append(amans, amans_2)
-
+  
     cal_dict = {}
-    
+
     #make bandwidth dict for speed
     #Note we use the site measured bandwidth for an array if available
     #Else we use the average of all arrays at that freq (also site measured)
@@ -136,18 +104,18 @@ if __name__ == '__main__':
             raise ValueError(f"Error: ufm {ufm} is not valid")
         for band in cur_bands:
             bandwidths[ufm][band] = get_bandwidth(band=band, ufm=ufm)
-    
+
     ctx = core.Context('/so/metadata/lat/contexts/smurf_detsets.yaml')
-    
-    path = "/so/home/saianeesh/data/beams/lat/source_maps/per_obs/"
 
-    mars_paths = glob(path+"mars/*/*/*_solved.fits")
-    saturn_paths = glob(path+"saturn/*/*/*_solved.fits")
-    arrays = []
 
-    for path in mars_paths:
-        arrays.append(path.split("/")[-1].split("_")[5])
-    arrays = set(arrays)
+    arrays = ["mv21", "mv24", "mv28",
+              "mv13", "mv20", "mv34",
+              "mv14", "mv32", "mv49",
+              "mv11", "mv25", "mv26",
+              "uv31", "uv42", "uv48",
+              "uv38", "uv39", "uv46",
+             ]
+
 
 
     radii_saturn = {array:{} for array in arrays}
@@ -155,19 +123,17 @@ if __name__ == '__main__':
     means_fits_saturn = {array:{} for array in arrays}
 
     for array in arrays:
-        for path in mars_paths:
-            if array in path:
-                freq = path.split("/")[-1].split("_")[6]
-                if freq == "f090" or freq == "f150":
-                    radii_saturn[array] = {"f090":[], "f150":[]}
-                    means_datas_saturn[array] = {"f090":[], "f150":[]}
-                    means_fits_saturn[array] = {"f090":[], "f150":[]}
-                elif freq == "f220" or freq == "f280":
-                    radii_saturn[array] = {"f220":[], "f280":[]}
-                    means_datas_saturn[array] = {"f220":[], "f280":[]}
-                    means_fits_saturn[array] = {"f220":[], "f280":[]}
-                break
-    radii_mars = copy.deepcopy(radii_saturn)
+        if "mv" in array:
+            radii_saturn[array] = {"f090":[], "f150":[]}
+            means_datas_saturn[array] = {"f090":[], "f150":[]}
+            means_fits_saturn[array] = {"f090":[], "f150":[]}
+        elif "uv" in array:
+            radii_saturn[array] = {"f220":[], "f280":[]}
+            means_datas_saturn[array] = {"f220":[], "f280":[]}
+            means_fits_saturn[array] = {"f220":[], "f280":[]}
+
+            radii_mars = copy.deepcopy(radii_saturn)
+
     means_datas_mars = copy.deepcopy(means_datas_saturn)
     means_fits_mars = copy.deepcopy(means_fits_saturn)
 
@@ -187,7 +153,11 @@ if __name__ == '__main__':
         
         if fwhm_cuts[band][1] < fitted_fwhm or fitted_fwhm < fwhm_cuts[band][0]:
             print(fwhm_cuts[band][0], fitted_fwhm, fwhm_cuts[band][1], band, ufm)
-            continue        
+            continue     
+            
+        if beam_volume_cuts[band][1] < data_solid_angle or data_solid_angle < beam_volume_cuts[band][0]:
+            print(beam_volume_cuts[band][0], data_solid_angle, beam_volume_cuts[band][1], band, ufm)
+            continue      
 
         #Get pwv/el adjustment
         start_date = dt.datetime.utcfromtimestamp(int(obs_id)) - dt.timedelta(days=1)
