@@ -35,15 +35,16 @@ def data_to_cal_factor(p_meas, beam_solid_angle, planet_diameter, bandwidth, pla
 
 
 fwhm_cuts = {"090": [1.7, 2.3],
-             "150": [1.1, 1.6],
+             "150": [1.0, 1.6],
              "220": [0.7, 1.2],
              "280": [0.65, 1.0],
             }
 
-beam_volume_cuts = {"090": [1e-7, 8e-7],
-                    "150": [1e-7, 8e-7],
-                    "220": [2e-8, 2e-7],
-                    "280": [2e-8, 2e-7],
+#These are roughly 20% - 500% the expected beam value
+beam_volume_cuts = {"090": [8e-8, 2e-6],
+                    "150": [4e-8, 1e-6],
+                    "220": [1e-8, 2e-7],
+                    "280": [1e-8, 2e-7],
                 }
 
 if __name__ == '__main__':
@@ -170,8 +171,12 @@ if __name__ == '__main__':
         except:
             print("obs {} outside of pwv range".format(obs_id))
             continue
+        if np.isnan(pwv_obs):
+            continue
         if pwv_obs > 2.5:
             continue
+            
+        
         meta = ctx.get_meta(obs_ids[i])
 
         el_obs = meta.obs_info.el_center
@@ -235,7 +240,7 @@ if __name__ == '__main__':
                      #Matt is working on a real fix but for now since the Neptune amp is >10x lower, a cut on the abscal is safe
         cal_dict[str(ufm)+"_"+str(band)+"_"+str(obs_id)] = {"adj_cal": cal_factor, "raw_cal": raw_factor, "pwv":pwv_obs, "el":el_obs, 
                                                             "omega_data": data_solid_angle, "fwhm":fitted_fwhm, "raw_opt":raw_opt_efc, 
-                                                            "cal_opt":cal_opt_efc, "source":planet}
+                                                            "cal_opt":cal_opt_efc, "source":planet, "time":obs_id}
         
         #Make profiles
         solved_file = "/so/home/saianeesh/data/beams/lat/source_maps/per_obs/{}/".format(planet)+str(obs_id[:5])+"/"+str(obs_ids[i])+"/"+str(obs_ids[i])+"_"+str(stream_ids[i])+"_"+str(bands[i])+"_solved.fits"
@@ -289,12 +294,12 @@ if __name__ == '__main__':
         if ufm in result_dict.keys():
             continue
         if "090" in freq or "150" in freq:
-            result_dict[ufm] = {"090":{"cal":[], "chi":[], "obs":[], "raw_cal":[], "el":[], "pwv":[], "fwhm":[], "raw_opt":[], "cal_opt":[], "omega_data":[], "source":[]},
-                                "150":{"cal":[], "chi":[], "obs":[], "raw_cal":[], "el":[], "pwv":[], "fwhm":[], "raw_opt":[], "cal_opt":[], "omega_data":[], "source":[]}
+            result_dict[ufm] = {"090":{"cal":[], "chi":[], "obs":[], "raw_cal":[], "el":[], "pwv":[], "fwhm":[], "raw_opt":[], "cal_opt":[], "omega_data":[], "source":[], "time":[]},
+                                "150":{"cal":[], "chi":[], "obs":[], "raw_cal":[], "el":[], "pwv":[], "fwhm":[], "raw_opt":[], "cal_opt":[], "omega_data":[], "source":[], "time":[]}
                                }
         else:
-            result_dict[ufm] = {"220":{"cal":[], "chi":[], "obs":[], "raw_cal":[], "el":[], "pwv":[], "fwhm":[], "raw_opt":[], "cal_opt":[], "omega_data":[], "source":[]},
-                                "280":{"cal":[], "chi":[], "obs":[], "raw_cal":[], "el":[], "pwv":[], "fwhm":[], "raw_opt":[], "cal_opt":[], "omega_data":[], "source":[]},
+            result_dict[ufm] = {"220":{"cal":[], "chi":[], "obs":[], "raw_cal":[], "el":[], "pwv":[], "fwhm":[], "raw_opt":[], "cal_opt":[], "omega_data":[], "source":[], "time":[]},
+                                "280":{"cal":[], "chi":[], "obs":[], "raw_cal":[], "el":[], "pwv":[], "fwhm":[], "raw_opt":[], "cal_opt":[], "omega_data":[], "source":[], "time":[]},
                                }
     for key in cal_dict.keys():
         ufm = key.split("_")[0]
@@ -309,6 +314,7 @@ if __name__ == '__main__':
         result_dict[ufm][freq]["cal_opt"].append(cal_dict[key]["cal_opt"])
         result_dict[ufm][freq]["omega_data"].append(cal_dict[key]["omega_data"])
         result_dict[ufm][freq]["source"].append(cal_dict[key]["source"])
+        result_dict[ufm][freq]["time"].append(cal_dict[key]["time"])
         
     today = dt.date.today()
     date_str = str(today.month).zfill(2)+str(today.day).zfill(2)+str(today.year)
