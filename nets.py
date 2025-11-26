@@ -121,9 +121,16 @@ for i in range(start_index, len(obs_list)):
 
 
             raw_cal = np.nanmedian(meta.abscal.raw_abscal_rj[net_flag])
-            ndets = len(np.where((meta.preprocess.noise.white_noise[net_flag] != 0))[0])
+            if "noise" in meta.preprocess.keys():
+                wnoise = meta.preprocess.noise.white_noise[net_flag]
+            elif "noiseT" in meta.preprocess.keys():
+                wnoise = meta.preprocess.noiseT.white_noise[net_flag]
+            else:
+                print("Error: no valid noise ken in {}".format(meta.preprocess.keys()))
+                continue
+            ndets = len(np.where((wnoise != 0))[0])
 
-            net_mes = 1/np.sqrt(2) * meta.preprocess.noise.white_noise[net_flag] * raw_cal 
+            net_mes = 1/np.sqrt(2) * wnoise * raw_cal 
             clean_nets = []
             for net in net_mes:
                 if net*1e6 > 100:
@@ -137,7 +144,7 @@ for i in range(start_index, len(obs_list)):
             net_dict[cur_wafer][band]["nets"].append(array_net)
             net_dict[cur_wafer][band]["pwv"].append(pwv(cur_obs["timestamp"]))
             net_dict[cur_wafer][band]["el"].append(meta.obs_info.el_center)
-            net_dict[cur_wafer][band]["neps"].append(meta.preprocess.noise.white_noise[net_flag])
+            net_dict[cur_wafer][band]["neps"].append(wnoise)
             net_dict[cur_wafer][band]["phiconv"].append(meta.det_cal.phase_to_pW[net_flag]) 
             
             
