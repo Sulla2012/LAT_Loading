@@ -325,7 +325,7 @@ if __name__ == '__main__':
     #Now to write the manifest db
     
     #Load important times in LAT history i.e. slipage/alighnment
-    lat_times = {"alignment0": {"start": 1744848000, "stop":1745150000}, "cr_slip0": {"start": 1745150000, "stop":1749355200}, "alignment1": {"start": 1749600000, "stop":1755576000}, "alignment2": {"start": 1756699200, "stop":20000000000}, 
+    lat_times = {"alignment0": {"start": 1744848000, "stop":1745150000}, "cr_slip0": {"start": 1745150000, "stop":1749355200}, "alignment1": {"start": 1749600000, "stop":1755576000}, "alignment2": {"start": 1756699200, "stop":20000000000}, }
     cals = []
     raw_cals = []
     data_freqs = []
