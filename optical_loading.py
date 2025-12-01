@@ -97,18 +97,27 @@ def keys_from_wafer(wafer: str, band: str):
             ufm_band = "MF_1"
         elif band == "150":
             ufm_band = "MF_2"
+        else:
+            raise ValueError(f"Error: bad band {band} for ufm {wafer}")
     elif "uv" in wafer:
         ufm_type = "UHF"
         if band == "220":
             ufm_band = "UHF_1"
         elif band == "280":
             ufm_band = "UHF_2"
-    else:
+        else:
+            raise ValueError(f"Error: bad band {band} for ufm {wafer}")
+    elif "lv" in wafer:
         ufm_type = "LF"
         if band == "030":
             ufm_band = "LF_1"
         elif band == "040":
             ufm_band = "LF_2"
+        else:
+            raise ValueError(f"Error: bad band {band} for ufm {wafer}")
+        
+    else:
+        raise ValueError(f"Error: bad ufm {wafer}.")
             
     return ufm_type, ufm_band
 
@@ -164,6 +173,51 @@ def bandpass_interp(band: str, ufm: str, path: str="/so/home/jorlo/data/lat_band
         y = np.mean(ys, axis = 0)
         
     return interpolate.interp1d(x, y, bounds_error=False, fill_value=0)
+
+def get_bandwidth(band: str, ufm: str, path: str="/so/home/jorlo/data/lat_bandpasses/") -> float:
+    """
+    Function which gets the site measured bandwidth for a given ufm and band.
+    If no data is available for the particular ufm of interest, the average
+    across all ufm's is used.
+    
+    Parameters
+    ----------
+    band : str
+        String identifying the band of interest
+    ufm : str
+        UFM of interest
+    path : str
+        Path to the bandpass files
+        
+    Returns
+    -------
+    bandwidth : float
+        The bandwidth, in GHz
+    """
+    if band == "090" or band == "150":
+        df = pd.read_csv(path + "LAT_MF_bands.csv")
+    elif band == "220" or band == "280":
+        df = pd.read_csv(path + "LAT_UHF_bands.csv")
+    else:
+        raise ValueError("ERROR: band {} not valid".format(band))
+        
+    x = np.linspace(20,375, 10000)
+    if str(ufm+"_f"+band) in df.keys():
+        band = bandpass_interp(band=band, ufm=ufm, path=path)
+        bandwidth = np.trapz(band(x), x)
+        
+    else:
+        arrays = [key.split("_")[0] for key in df.keys() if key != "frequency"]
+        passes = np.zeros(len(arrays))
+        for i, array in enumerate(arrays):
+            bandpass = bandpass_interp(band, array)
+            x = np.linspace(50, 350, 10000)
+            y = bandpass(x)
+            passes[i] = np.trapezoid(y, x)
+        bandwidth = np.mean(passes)
+    return bandwidth
+        
+
 
 def get_fpa_temps(obs_list: list[core.axisman.AxisManager]) -> np.array:
     """
