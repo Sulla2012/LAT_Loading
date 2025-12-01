@@ -325,8 +325,7 @@ if __name__ == '__main__':
     #Now to write the manifest db
     
     #Load important times in LAT history i.e. slipage/alighnment
-    with open("/so/home/jorlo/dev/site-pipeline-configs/lat/instrument_times.yaml", "r") as file:
-        lat_times = yaml.safe_load(file)    
+    lat_times = {"alignment0": {"start": 1744848000, "stop":1745150000}, "cr_slip0": {"start": 1745150000, "stop":1749355200}, "alignment1": {"start": 1749600000, "stop":1755576000}, "alignment2": {"start": 1756699200, "stop":20000000000}, 
     cals = []
     raw_cals = []
     data_freqs = []
@@ -380,7 +379,7 @@ if __name__ == '__main__':
     df = pd.DataFrame({'freqs': data_freqs, 'ufms':data_ufms, 'cals': cals,'raw_cals': raw_cals,'cals_cmb':cals_cmb, 'raw_cals_cmb':raw_cals_cmb, 'omegas':omegas, "obs":obs})
     
     #periods we care about
-    keys = ["initial_alignment", "corot_slip", "post_slip_alignment"]
+    keys = ["alignment0", "cr_slip0", "alignment1", "alignment2"]
 
     for key in keys:
         data = []
@@ -421,14 +420,17 @@ if __name__ == '__main__':
     scheme.add_data_field('dataset')
 
     db = core.metadata.ManifestDb(scheme=scheme)
-    db.add_entry({"obs:timestamp": (lat_times["initial_alignment"]["start"], lat_times["initial_alignment"]["stop"]),
+    db.add_entry({"obs:timestamp": (lat_times["alignment0"]["start"], lat_times["alignment0"]["stop"]),
                   "dataset": "abscal_initial_alignment"},
                   filename="abscals.h5")
-    db.add_entry({"obs:timestamp": (lat_times["corot_slip"]["start"], lat_times["corot_slip"]["stop"]),
+    db.add_entry({"obs:timestamp": (lat_times["cr_slip0"]["start"], lat_times["cr_slip0"]["stop"]),
                   "dataset": "abscal_corot_slip"},
                   filename="abscals.h5")
-    db.add_entry({"obs:timestamp": (lat_times["post_slip_alignment"]["start"], lat_times["post_slip_alignment"]["stop"]),
-                  "dataset": "abscal_post_slip_alignment"},
+    db.add_entry({"obs:timestamp": (lat_times["alignment1"]["start"], alignment1["alignment1"]["stop"]),
+                  "dataset": "abscal_first_realignment"},
+                  filename="abscals.h5")
+    db.add_entry({"obs:timestamp": (lat_times["alignment2"]["start"], alignment1["alignment2"]["stop"]),
+                  "dataset": "abscal_second_realignment"},
                   filename="abscals.h5")
 
     #db.add_entry({'dataset': 'abscal'}, filename='abscals.h5')
