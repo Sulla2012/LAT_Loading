@@ -426,10 +426,10 @@ if __name__ == '__main__':
     db.add_entry({"obs:timestamp": (lat_times["cr_slip0"]["start"], lat_times["cr_slip0"]["stop"]),
                   "dataset": "abscal_corot_slip"},
                   filename="abscals.h5")
-    db.add_entry({"obs:timestamp": (lat_times["alignment1"]["start"], alignment1["alignment1"]["stop"]),
+    db.add_entry({"obs:timestamp": (lat_times["alignment1"]["start"], lat_times["alignment1"]["stop"]),
                   "dataset": "abscal_first_realignment"},
                   filename="abscals.h5")
-    db.add_entry({"obs:timestamp": (lat_times["alignment2"]["start"], alignment1["alignment2"]["stop"]),
+    db.add_entry({"obs:timestamp": (lat_times["alignment2"]["start"], lat_times["alignment2"]["stop"]),
                   "dataset": "abscal_second_realignment"},
                   filename="abscals.h5")
 
