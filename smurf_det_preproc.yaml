@@ -28,7 +28,7 @@ metadata:
     unpack: det_cal
     # on_missing: fail  ## work-around for variable mask
     on_missing: trim
-  - db: '{manifestdir}/focal_plane/lat_focal_plane_231129r2/db.sqlite'
+  - db: '{manifestdir}/focal_plane/lat_focal_plane_250810r2/db.sqlite'
     label: focal_plane
     unpack: focal_plane
     on_missing: fail
