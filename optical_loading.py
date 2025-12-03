@@ -121,7 +121,7 @@ def keys_from_wafer(wafer: str, band: str):
             
     return ufm_type, ufm_band
 
-def pwv_interp(filepath: str="/so/home/jorlo/dev/LAT_analysis/apex_pwv_data.npz", time_cut: float=17410*1e5) -> interpolate.interp1d:
+def pwv_interp(filepath: str="apex_pwv_data.npz", time_cut: float=17410*1e5) -> interpolate.interp1d:
     """
     Interpolates APEX pwv data. Should be replaced by SO radiometer when it becomes available
 
