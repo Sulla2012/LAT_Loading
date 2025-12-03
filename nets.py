@@ -39,7 +39,7 @@ except:
 ctx = core.Context('./smurf_det_preproc.yaml')
 
 start = dt.datetime(2025,4,17, tzinfo=dt.timezone.utc)
-end = dt.datetime(2025,11,21, tzinfo=dt.timezone.utc)
+end = dt.datetime(2025,12,21, tzinfo=dt.timezone.utc)
 obs_list = ctx.obsdb.query(
     f"{end.timestamp()} > timestamp and timestamp > {start.timestamp()} and type=='obs' and subtype=='cmb'"
 )
