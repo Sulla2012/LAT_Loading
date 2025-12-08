@@ -196,9 +196,12 @@ if __name__ == '__main__':
         pwv_adjust = t_atm_fiducial / t_atm_obs
 
         adjusted_amplitude = amp * pwv_adjust[0]
-
-        tags = ctx.obsdb.get(obs_ids[i], tags=True)["tags"]
         
+        try:
+            tags = ctx.obsdb.get(obs_ids[i], tags=True)["tags"]
+        except:
+            continue
+            
         if "mars" in tags:
             planet="mars"
             tb_time = 0
@@ -377,11 +380,8 @@ if __name__ == '__main__':
     obs = np.array(obs, dtype=float)
 
     df = pd.DataFrame({'freqs': data_freqs, 'ufms':data_ufms, 'cals': cals,'raw_cals': raw_cals,'cals_cmb':cals_cmb, 'raw_cals_cmb':raw_cals_cmb, 'omegas':omegas, "obs":obs})
-    
-    #periods we care about
-    keys = ["alignment0", "cr_slip0", "alignment1", "alignment2"]
 
-    for key in keys:
+    for key in lat_times.keys():
         data = []
 
         #For each period, we're going to compute the average abscal for each ufm and freq
@@ -412,7 +412,7 @@ if __name__ == '__main__':
         rs = core.metadata.ResultSet(
             keys=['dets:stream_id', 'dets:wafer.bandpass', 'abscal_rj', 'raw_abscal_rj', 'abscal_cmb', 'raw_abscal_cmb', 'beam_solid_angle'])
         rs.rows = data
-        io_meta.write_dataset(rs, 'abscals.h5', "abscal_{}".format(key), overwrite=True)
+        io_meta.write_dataset(rs, 'abscals.h5', "{}".format(key), overwrite=True)
         
     # Record in ManifestDb.
     scheme = core.metadata.ManifestScheme()
@@ -421,16 +421,16 @@ if __name__ == '__main__':
 
     db = core.metadata.ManifestDb(scheme=scheme)
     db.add_entry({"obs:timestamp": (lat_times["alignment0"]["start"], lat_times["alignment0"]["stop"]),
-                  "dataset": "abscal_initial_alignment"},
+                  "dataset": "alignment0"},
                   filename="abscals.h5")
     db.add_entry({"obs:timestamp": (lat_times["cr_slip0"]["start"], lat_times["cr_slip0"]["stop"]),
-                  "dataset": "abscal_corot_slip"},
+                  "dataset": "cr_slip0"},
                   filename="abscals.h5")
     db.add_entry({"obs:timestamp": (lat_times["alignment1"]["start"], lat_times["alignment1"]["stop"]),
-                  "dataset": "abscal_first_realignment"},
+                  "dataset": "alignment1"},
                   filename="abscals.h5")
     db.add_entry({"obs:timestamp": (lat_times["alignment2"]["start"], lat_times["alignment2"]["stop"]),
-                  "dataset": "abscal_second_realignment"},
+                  "dataset": "alignment2"},
                   filename="abscals.h5")
 
     #db.add_entry({'dataset': 'abscal'}, filename='abscals.h5')
