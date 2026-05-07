@@ -3,7 +3,7 @@ from . import map_utils as mu
 import numpy as np
 
 def parse_dict(net_dict: dict) -> pd.DataFrame:
-    from optical_loading import pwv_interp
+    from utils.optical_loading import pwv_interp
 
     pwv = pwv_interp()
     labels = []
@@ -99,7 +99,7 @@ def parse_dict(net_dict: dict) -> pd.DataFrame:
     return df
 
 def parse_neps(net_dict: dict) -> pd.DataFrame:
-    from optical_loading import pwv_interp
+    from utils.optical_loading import pwv_interp
 
     pwv = pwv_interp()
     nep_labels = []
@@ -109,6 +109,7 @@ def parse_neps(net_dict: dict) -> pd.DataFrame:
     obs = []
     pwvs = []
     els = []
+    pwv_sinel = []
     
     ufms = sorted(net_dict.keys())[1:] #remove index key
 
@@ -141,7 +142,7 @@ def parse_neps(net_dict: dict) -> pd.DataFrame:
                                 obs.append(cur_obs[j])
                                 pwvs.append(cur_pwv)
                                 els.append(cur_el[j])
-
+                                pwv_sinel.append(cur_pwv/np.sin(np.deg2rad(cur_el[j])))
     nep_labels = np.array(nep_labels)
     neps = np.array(neps)
     neis = np.array(neis)
@@ -149,6 +150,7 @@ def parse_neps(net_dict: dict) -> pd.DataFrame:
     cals = np.array(cals)
     pwvs = np.array(pwvs)
     els = np.array(els)
+    pwv_sinel = np.array(pwv_sinel)
 
-    nep_df = pd.DataFrame({'labels': nep_labels,'obs': obs, "pwv":pwvs, "neps":neps, "neis":neis, "el":els, "cals":cals})
+    nep_df = pd.DataFrame({'labels': nep_labels,'obs': obs, "pwv":pwvs, "neps":neps, "neis":neis, "el":els, "cals":cals, "pwv_sinel":pwv_sinel,})
     return nep_df
