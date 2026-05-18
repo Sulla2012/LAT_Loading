@@ -110,6 +110,7 @@ def parse_neps(net_dict: dict) -> pd.DataFrame:
     pwvs = []
     els = []
     pwv_sinel = []
+    abscals = []
     
     ufms = sorted(net_dict.keys())[1:] #remove index key
 
@@ -135,6 +136,7 @@ def parse_neps(net_dict: dict) -> pd.DataFrame:
                         cur_pwv = pwv(cur_obs[j].split("_")[1])
                         if cur_nets[j] <= 100 and cur_ndets[j] > 100 and cur_pwv < 6: #very large nets are not real
                             for i, nep in enumerate(cur_neps[j]): 
+                                abscals.append(cur_abscals[j])
                                 neps.append(nep)
                                 nep_labels.append(label)
                                 cals.append(cur_phicals[j][i])
@@ -151,6 +153,7 @@ def parse_neps(net_dict: dict) -> pd.DataFrame:
     pwvs = np.array(pwvs)
     els = np.array(els)
     pwv_sinel = np.array(pwv_sinel)
+    abscals = np.array(abscals)
 
-    nep_df = pd.DataFrame({'labels': nep_labels,'obs': obs, "pwv":pwvs, "neps":neps, "neis":neis, "el":els, "cals":cals, "pwv_sinel":pwv_sinel,})
+    nep_df = pd.DataFrame({'labels': nep_labels,'obs': obs, "pwv":pwvs, "neps":neps, "neis":neis, "el":els, "cals":cals, "pwv_sinel":pwv_sinel,"abscals":abscals,})
     return nep_df
