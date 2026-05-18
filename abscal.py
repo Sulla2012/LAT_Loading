@@ -63,7 +63,7 @@ if __name__ == '__main__':
     #fpath = "/so/home/saianeesh/data/beams/lat_old/source_maps/pointing_model/fits/beam_pars.h5"
     
     #ASO path
-    fpath = "/global/homes/s/skh/data/beams/lat/pointing_model_atm_relcal/beam_pars.h5"
+    fpath = "/global/cfs/cdirs/sobs/users/skh/data/beams/lat/pointing_model_atm_relcal/beam_pars.h5"
     f = h5py.File(fpath, mode="r")                                         
     obs_ids = []                                            
     times = []                                              
@@ -106,9 +106,9 @@ if __name__ == '__main__':
         else:
             raise ValueError(f"Error: ufm {ufm} is not valid")
         for band in cur_bands:
-            bandwidths[ufm][band] = get_bandwidth(band=band, ufm=ufm)
+            bandwidths[ufm][band] = get_bandwidth(band=band, ufm=ufm, path="./")
 
-    ctx = core.Context('/so/metadata/lat/contexts/smurf_detsets.yaml')
+    ctx = core.Context('/global/cfs/cdirs/sobs/metadata/lat/contexts/smurf_detsets_local.yaml')
 
 
     arrays = ["mv21", "mv24", "mv28",
@@ -248,7 +248,7 @@ if __name__ == '__main__':
         cal_dict[str(ufm)+"_"+str(band)+"_"+str(obs_id)] = {"adj_cal": cal_factor, "raw_cal": raw_factor, "pwv":pwv_obs, "el":el_obs, 
                                                             "omega_data": data_solid_angle, "fwhm":fitted_fwhm, "raw_opt":raw_opt_efc, 
                                                             "cal_opt":cal_opt_efc, "source":planet, "time":obs_id}
-        
+        """
         #Make profiles
         solved_file = "/so/home/saianeesh/data/beams/lat/source_maps/per_obs/{}/".format(planet)+str(obs_id[:5])+"/"+str(obs_ids[i])+"/"+str(obs_ids[i])+"_"+str(stream_ids[i])+"_"+str(bands[i])+"_solved.fits"
         weight_file = solved_file.replace("solved", "weights")
@@ -285,13 +285,13 @@ if __name__ == '__main__':
             means_fits_saturn[ufm][bands[i]].append(means_fit)
         else:
             continue
-
+        """
     with open("abscals.pk", "wb") as f:
         pk.dump(cal_dict, f)
         
-    rad_dict = {"rad_sat":radii_saturn, "data_sat":means_datas_saturn, "fit_sat":means_fits_saturn, "rad_mars":radii_mars, "data_mars":means_datas_mars, "fit_mars":means_fits_mars}
-    with open("mars_saturn.pk", "wb") as f:
-        pk.dump(rad_dict, f)
+    #rad_dict = {"rad_sat":radii_saturn, "data_sat":means_datas_saturn, "fit_sat":means_fits_saturn, "rad_mars":radii_mars, "data_mars":means_datas_mars, "fit_mars":means_fits_mars}
+    #with open("mars_saturn.pk", "wb") as f:
+    #    pk.dump(rad_dict, f)
                      
     result_dict = {}
 
