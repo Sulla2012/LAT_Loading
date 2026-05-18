@@ -210,7 +210,7 @@ def get_bandwidth(band: str, ufm: str, path: str="/so/home/jorlo/data/lat_bandpa
         arrays = [key.split("_")[0] for key in df.keys() if key != "frequency"]
         passes = np.zeros(len(arrays))
         for i, array in enumerate(arrays):
-            bandpass = bandpass_interp(band, array)
+            bandpass = bandpass_interp(band, array, path=path)
             x = np.linspace(50, 350, 10000)
             y = bandpass(x)
             passes[i] = np.trapezoid(y, x)
