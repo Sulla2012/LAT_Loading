@@ -3,8 +3,8 @@ from pixell import utils, enmap, bunch, reproject, colors, coordinates
 import numpy as np
 import pandas as pd
 
-import map_utils as mu
-from optical_loading import pwv_interp, keys_from_wafer, bandpass_interp, get_bandwidth
+import utils.map_utils as mu
+from utils.optical_loading import pwv_interp, keys_from_wafer, bandpass_interp, get_bandwidth
 from mars_temps import T_b
 
 from sotodlib import core
@@ -34,10 +34,13 @@ def data_to_cal_factor(p_meas, beam_solid_angle, planet_diameter, bandwidth, pla
     return cal_factor, opt_eff
 
 
-fwhm_cuts = {"090": [1.7, 2.3],
-             "150": [1.0, 1.6],
-             "220": [0.7, 1.2],
-             "280": [0.65, 1.0],
+#Uniform +/- 20% from nominal. TODO: Make the percentage offset a variable
+fwhm_cuts = {"030": [6.0, 8.8],
+             "040": [4.1, 6.1],
+             "090": [1.8, 2.6],
+             "150": [1.1, 1.6],
+             "220": [0.8, 1.2],
+             "280": [0.7, 1.0],
             }
 
 #These are roughly 20% - 500% the expected beam value
@@ -56,12 +59,11 @@ if __name__ == '__main__':
     el_key = "50" #hardcoded :(
     pwv = pwv_interp()
 
-    #load matt hasslefield type beams. Unfortunately these are in two locations,
-    #this somewhat awkward code block correctly loads all beams from both
-    #dirs but doesn't load beams
-
-    #fpath="/so/home/saianeesh/data/beams/lat/source_maps/per_obs/fits/beam_pars.h5"
-    fpath = "/so/home/saianeesh/data/beams/lat_old/source_maps/pointing_model/fits/beam_pars.h5"
+    #This is the fpath used for nominal SO Commissioning. Keeping for reproducibility
+    #fpath = "/so/home/saianeesh/data/beams/lat_old/source_maps/pointing_model/fits/beam_pars.h5"
+    
+    #ASO path
+    fpath = "/global/homes/s/skh/data/beams/lat/pointing_model_atm_relcal/beam_pars.h5"
     f = h5py.File(fpath, mode="r")                                         
     obs_ids = []                                            
     times = []                                              
@@ -119,6 +121,7 @@ if __name__ == '__main__':
 
 
 
+    #Set up arrays to hold our measurements
     radii_saturn = {array:{} for array in arrays}
     means_datas_saturn = {array:{} for array in arrays}
     means_fits_saturn = {array:{} for array in arrays}
@@ -151,7 +154,8 @@ if __name__ == '__main__':
             amp = aman.amp.value + aman.amp_outer.value
         else:
             amp = aman.amp.value
-        
+            
+        #First cut is on FWHM
         if fwhm_cuts[band][1] < fitted_fwhm or fitted_fwhm < fwhm_cuts[band][0]:
             print(fwhm_cuts[band][0], fitted_fwhm, fwhm_cuts[band][1], band, ufm)
             continue     
