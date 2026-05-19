@@ -16,8 +16,8 @@ import yaml
 
 import so3g.proj as proj
 
-os.environ["JBOLO_PATH"] = "/so/home/jorlo/dev/jbolo"
-os.environ["JBOLO_MODELS_PATH"] = "/so/home/jorlo/dev/bolocalc-so-model"
+#os.environ["JBOLO_PATH"] = "/so/home/jorlo/dev/jbolo"
+#os.environ["JBOLO_MODELS_PATH"] = "/so/home/jorlo/dev/bolocalc-so-model"
 
 sim_list = {
     'baseline': {
@@ -427,3 +427,86 @@ def get_pwv_obs(obs_id, pwv_data, n_hours_before, n_hours_after):
             'timestamp'] < timestamp + n_hours_after * 3600], axis=0)
     pwv_obs = np.nanmean(pwv_data['pwv'][msk])
     return pwv_obs
+
+def get_inner_radial_mask(resid_map: enmap, pixsize: float, radius: float) -> np.ndarray:
+    """
+    Get a boolean mask for the pixels in resid_map that are within radius arcmin of the center of the map.
+
+    Parameters
+    ----------
+    resid_map : enmap
+        Residual map to get the mask for.
+    pixsize : float
+        Pixel size of the map in arcmin.
+    radius : float
+        Radius in arcmin to use for the mask.
+
+    Returns
+    -------
+    mask : np.ndarray
+        Boolean mask for the pixels in resid_map that are within radius arcmin of the center of the map.
+    """
+    x0, y0 = int(resid_map.shape[0] / 2), int(resid_map.shape[1] / 2) 
+    X, Y = np.arange(resid_map.shape[0]), np.arange(resid_map.shape[1])
+    XX, YY = np.meshgrid(Y, X)
+
+    dist = np.sqrt((XX - x0) ** 2 + (YY - y0) ** 2) * pixsize
+
+    return dist < radius
+
+def get_beam_keepout(band: str) -> float:
+    """
+    Get the keepout radius in arcmin for the given band, which is 3x the FWHM of the beam for that band.
+
+    Parameters
+    ----------
+    band : str
+        Frequency of the residual map.
+
+    Returns
+    -------
+    keepout : float
+        Keepout radius in arcmin for the given band.
+
+    Raises    
+    ------
+    ValueError
+        If the band is not one of "030", "040", "090", "150", "220", or "280".
+    """
+    if band == "030":
+        return 0.2 * 60 * 90/30
+    elif band == "040":
+        return 0.2 * 60 * 90/40
+    elif band == "090":
+        return 0.2 * 60
+    elif band == "150":
+        return 0.2 * 60 * 90/150
+    elif band == "220":
+        return 0.2 * 60 * 90/220
+    elif band == "280":
+        return 0.2 * 60 * 90/280
+    else:
+        raise ValueError(f"Invalid band: {band}")
+
+
+
+def get_resid_rmse(resid_path: str, band: str) -> float:
+    """
+    Get the RMSE of the residual map at resid_path for the given band.
+
+    Parameters
+    ----------
+    resid_path : str
+        Path to the residual map.
+    band : str
+        Frequency of the residual map.
+
+    Returns
+    -------
+    rmse : float
+        RMSE of the residual map.
+    """
+    resid_map = enmap.read_map(resid_path)
+    mask = get_inner_radial_mask(resid_map=resid_map, pixsize=np.abs(resid_map.wcs.wcs.cdelt[0]) * 60, radius=get_beam_keepout(band=band))
+
+    return np.sqrt(np.mean(resid_map[mask]**2))

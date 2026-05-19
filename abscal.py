@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 import utils.map_utils as mu
-from utils.optical_loading import pwv_interp, keys_from_wafer, bandpass_interp, get_bandwidth
+from utils.optical_loading import pwv_interp, keys_from_wafer, bandpass_interp, get_bandwidth, ot_from_ufm
 from mars_temps import T_b
 
 from sotodlib import core
@@ -63,8 +63,8 @@ if __name__ == '__main__':
     #fpath = "/so/home/saianeesh/data/beams/lat_old/source_maps/pointing_model/fits/beam_pars.h5"
     
     #ASO path
-    fpath = "/global/cfs/cdirs/sobs/users/skh/data/beams/lat/pointing_model_atm_relcal/beam_pars.h5"
-    f = h5py.File(fpath, mode="r")                                         
+    data_dir = "/global/cfs/cdirs/sobs/users/skh/data/beams/lat/pointing_model_atm_relcal/"
+    f = h5py.File(data_dir + "beam_pars.h5", mode="r")                                         
     obs_ids = []                                            
     times = []                                              
     stream_ids = []                                         
@@ -145,7 +145,7 @@ if __name__ == '__main__':
         obs_id = obs_ids[i].split("_")[1]
         ufm = stream_ids[i].split("_")[1]
         band = bands[i][1:]     
-        ufm_type, ufm_band = keys_from_wafer(ufm, band)
+        ufm_type, ufm_band = keys_from_wafer(ufm, band)           
         
         fitted_fwhm = aman.data_fwhm.to(u.arcmin).value
         data_solid_angle = aman.data_solid_angle_corr.value
@@ -159,14 +159,61 @@ if __name__ == '__main__':
         if fwhm_cuts[band][1] < fitted_fwhm or fitted_fwhm < fwhm_cuts[band][0]:
             print(fwhm_cuts[band][0], fitted_fwhm, fwhm_cuts[band][1], band, ufm)
             continue     
-            
+
+        #Second cut is on beam volume
         if beam_volume_cuts[band][1] < data_solid_angle or data_solid_angle < beam_volume_cuts[band][0]:
             print(beam_volume_cuts[band][0], data_solid_angle, beam_volume_cuts[band][1], band, ufm)
-            continue      
+            continue    
+
+        #Get planet temperature
+        try:
+            tags = ctx.obsdb.get(obs_ids[i], tags=True)["tags"]
+        except:
+            continue
+            
+        if "mars" in tags:
+            planet="mars"
+            tb_time = 0
+            for key in T_b.keys():
+                if np.abs(int(obs_id) - int(key)) <= 300: #Within 5 minutes is OK
+                    tb_time = key
+                    break
+            if not tb_time:
+                print("No Mars data for obs {}".format(obs_id))
+                continue    
+            planet_temp = T_b[tb_time][band]
+            
+        elif "saturn" in tags:
+            planet="saturn"
+            if band == "090":
+                planet_temp = 142.9
+            elif band == "150":
+                planet_temp = 142.6
+            elif band == "220":
+                planet_temp = 139.7
+            elif band == "280":
+                planet_temp = 138.7
+            else:
+                print("Error: invalid freq {}".format(freq))
+                continue
+
+        else:
+            print("Error: no planet in tags: {}".format(tags[-1]))
+            continue
+
+        subdir = obs_ids[i]
+        resid_name = subdir + "_ufm_" + ufm + "_f"+band+"_resid.fits"
+        resid_path = os.path.join(data_dir, planet, obs_id[:5], subdir, resid_name)
+        rmse = mu.get_resid_rmse(resid_path, band)
+
+        #Third cut is on RMSE
+        if rmse > 0.05:
+            print("RMSE = {} > 0.05".format(rmse))
+            continue
 
         #Get pwv/el adjustment
-        start_date = dt.datetime.utcfromtimestamp(int(obs_id)) - dt.timedelta(days=1)
-        end_date = dt.datetime.utcfromtimestamp(int(obs_id)) + dt.timedelta(days=1)
+        start_date = dt.datetime.fromtimestamp(int(obs_id), dt.UTC) - dt.timedelta(days=1)
+        end_date = dt.datetime.fromtimestamp(int(obs_id), dt.UTC) + dt.timedelta(days=1)
 
         pwv_idx = np.where(np.array([np.abs(pwv - fiducial_pwv) < 0.1 for pwv in atmosphere_eff['pwv']]))[0]
 
@@ -200,40 +247,7 @@ if __name__ == '__main__':
         pwv_adjust = t_atm_fiducial / t_atm_obs
 
         adjusted_amplitude = amp * pwv_adjust[0]
-        
-        try:
-            tags = ctx.obsdb.get(obs_ids[i], tags=True)["tags"]
-        except:
-            continue
-            
-        if "mars" in tags:
-            planet="mars"
-            tb_time = 0
-            for key in T_b.keys():
-                if np.abs(int(obs_id) - int(key)) <= 300: #Within 5 minutes is OK
-                    tb_time = key
-                    break
-            if not tb_time:
-                print("No Mars data for obs {}".format(obs_id))
-                continue    
-            planet_temp = T_b[tb_time][band]
-            
-        elif "saturn" in tags:
-            planet="saturn"
-            if band == "090":
-                planet_temp = 142.9
-            elif band == "150":
-                planet_temp = 142.6
-            elif band == "220":
-                planet_temp = 139.7
-            elif band == "280":
-                planet_temp = 138.7
-            else:
-                print("Error: invalid freq {}".format(freq))
-                continue
-        else:
-            print("Error: no planet in tags: {}".format(tags[-1]))
-            continue
+    
 
         planet_diameter = mu.get_planet_diameter(int(obs_id), planet.capitalize()) # arcsec, we are using exact temperatures
 
