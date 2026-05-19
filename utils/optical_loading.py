@@ -30,6 +30,12 @@ ufm_dict = {"c1":["uv38", "uv39", "uv46"],
             "i6":["mv11", "mv25", "mv26"],
            }
 
+def ot_from_ufm(ufm: str) -> str:
+    for ot in ufm_dict.keys():
+        if ufm in ufm_dict[ot]:
+            return ot
+    raise ValueError("Error: no OT found for UFM {}".format(ufm))
+
 #Dict that tracks UXM measurements. Low is the low freq channel, high is the high
 UXM_dict = {"low":{"uv42":{"psat_dark": 28.2, "kappa": 27154, "G":669, "n":3.8}, 
                    "uv47":{"psat_dark": 31.4, "kappa": 26600, "G":780, "n":3.8},
@@ -210,7 +216,7 @@ def get_bandwidth(band: str, ufm: str, path: str="/so/home/jorlo/data/lat_bandpa
         arrays = [key.split("_")[0] for key in df.keys() if key != "frequency"]
         passes = np.zeros(len(arrays))
         for i, array in enumerate(arrays):
-            bandpass = bandpass_interp(band, array)
+            bandpass = bandpass_interp(band, array, path=path)
             x = np.linspace(50, 350, 10000)
             y = bandpass(x)
             passes[i] = np.trapezoid(y, x)
