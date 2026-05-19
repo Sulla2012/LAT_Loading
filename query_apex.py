@@ -11,7 +11,7 @@ end_date = dt.datetime(2026,5,18)
 
 request = requests.post(APEX_DATA_URL, data={
         'wdbo': 'csv/download',
-        'max_rows_returned': 300000,
+        'max_rows_returned': 900000,
         'start_date': start_date.strftime('%Y-%m-%dT%H:%M:%S') + '..' \
             + end_date.strftime('%Y-%m-%dT%H:%M:%S'),
         'tab_pwv': 'on',
