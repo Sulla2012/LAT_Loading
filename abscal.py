@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 
 import utils.map_utils as mu
+from utils import abscal_utils as au
 from utils.optical_loading import pwv_interp, keys_from_wafer, get_bandwidth
 from planet_models.core import get_planet_temp
 
@@ -333,8 +334,8 @@ if __name__ == "__main__":
             "time": obs_id,
         }
 
-        if not parser.parse_args().make_profiles:
-            radii_data, means_data, means_fit = abscal_utils.make_planet_profiles(
+        if args.make_profiles:
+            radii_data, means_data, means_fit = au.make_planet_profiles(
                 planet=planet,
                 obs_id=obs_id,
                 stream_id=stream_ids[i],
