@@ -428,7 +428,7 @@ def fit_gauss_pointing(imap, ivar, pixmap, make_plots=True):
 
         levels = [max_val * 0.1, max_val * 0.25, max_val * 0.5, max_val * 0.75, max_val]
 
-        cs = plt.contour(
+        plt.contour(
             x_vals,
             y_vals,
             data_fitted,

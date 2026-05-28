@@ -1,6 +1,7 @@
 import pandas as pd
 from . import map_utils as mu
 import numpy as np
+import astropy.units as u
 
 
 def parse_dict(net_dict: dict) -> pd.DataFrame:

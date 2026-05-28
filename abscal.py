@@ -341,6 +341,8 @@ if __name__ == "__main__":
                 band=bands[i],
                 ufm=ufm,
             )
+            if radii_data is None:
+                continue
             if planet == "mars":
                 radii_mars[ufm][bands[i]].append(radii_data)
                 means_datas_mars[ufm][bands[i]].append(means_data)
