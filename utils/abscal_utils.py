@@ -4,20 +4,7 @@ from astropy.convolution import Gaussian2DKernel, convolve
 from pixell import enmap
 
 
-def make_planet_profiles(planet, obs_id, stream_id, band, ufm):
-    solved_file = (
-        "/so/home/saianeesh/data/beams/lat/source_maps/per_obs/{}/".format(planet)
-        + str(obs_id[:5])
-        + "/"
-        + str(obs_ids[i])
-        + "/"
-        + str(obs_ids[i])
-        + "_"
-        + str(stream_ids[i])
-        + "_"
-        + str(bands[i])
-        + "_solved.fits"
-    )
+def make_planet_profiles(solved_file: str) -> tuple(np.array, np.array, np.array):
     weight_file = solved_file.replace("solved", "weights")
     binned_file = solved_file.replace("solved", "binned")
     try:

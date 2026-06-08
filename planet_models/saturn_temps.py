@@ -36,5 +36,5 @@ def get_saturn_temp(band: str):
         # Fit k=2 interp to Planck LLI table 6, using 143, 217, 353 points, interpolated at the average bandcenter for the Nominal SO tubes of 284.5
         saturn_temp = 136.3
     else:
-        raise ValueError("Error: invalid freq {}".format(freq))
+        raise ValueError("Error: invalid band {}".format(band))
     return saturn_temp

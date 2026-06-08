@@ -304,12 +304,23 @@ if __name__ == "__main__":
         }
 
         if args.make_profiles:
+            solved_file = (
+                "/so/home/saianeesh/data/beams/lat/source_maps/per_obs/{}/".format(
+                    planet
+                )
+                + str(obs_id[:5])
+                + "/"
+                + str(obs_ids[i])
+                + "/"
+                + str(obs_ids[i])
+                + "_"
+                + str(stream_ids[i])
+                + "_"
+                + str(bands[i])
+                + "_solved.fits"
+            )
             radii_data, means_data, means_fit = au.make_planet_profiles(
-                planet=planet,
-                obs_id=obs_id,
-                stream_id=stream_ids[i],
-                band=bands[i],
-                ufm=ufm,
+                solved_file=solved_file,
             )
             if radii_data is None:
                 continue

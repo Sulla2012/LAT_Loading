@@ -1,3 +1,40 @@
+import numpy as np
+
+
+def get_mars_temp(obs_id: str, band: str):
+    """
+    Get the brightness temperature of Mars for a given observation ID and band.
+
+    Parameters:
+    -----------
+    obs_id : str
+           The observation ID for which to retrieve the brightness temperature.
+    band : str
+           The band for which to retrieve the brightness temperature.
+
+    Returns:
+    --------
+    T_b[tb_time][band] : float
+           The brightness temperature of Mars for the given observation ID and band.
+    Raises:
+    -------
+    ValueError
+           If no Mars data is available for the given observation ID.
+    """
+    if band not in ["030", "040", "090", "150", "220", "280"]:
+        raise ValueError(
+            "Invalid band. Must be one of '030', '040', '090', '150', '220', '280'."
+        )
+    tb_time = 0
+    for key in T_b.keys():
+        if np.abs(int(obs_id) - int(key)) <= 300:  # Within 5 minutes is OK
+            tb_time = key
+            break
+    if not tb_time:
+        raise ValueError("No Mars data for obs {}".format(obs_id))
+    return T_b[tb_time][band]
+
+
 T_b = {
     "1740190512": {"090": 214.762, "150": 220.089, "220": 223.809, "280": 225.923},
     "1740190513": {"090": 214.762, "150": 220.089, "220": 223.809, "280": 225.923},
@@ -293,40 +330,3 @@ T_b = {
     "1759696907": {"090": 205.290, "150": 209.285, "220": 212.376, "280": 214.245},
     # {"090":, "150":, "220":, "280":},
 }
-
-
-import numpy as np
-
-
-def get_mars_temp(obs_id: str, band: str):
-    """
-    Get the brightness temperature of Mars for a given observation ID and band.
-
-    Parameters:
-    -----------
-    obs_id : str
-           The observation ID for which to retrieve the brightness temperature.
-    band : str
-           The band for which to retrieve the brightness temperature.
-
-    Returns:
-    --------
-    T_b[tb_time][band] : float
-           The brightness temperature of Mars for the given observation ID and band.
-    Raises:
-    -------
-    ValueError
-           If no Mars data is available for the given observation ID.
-    """
-    if band not in ["030", "040", "090", "150", "220", "280"]:
-        raise ValueError(
-            "Invalid band. Must be one of '030', '040', '090', '150', '220', '280'."
-        )
-    tb_time = 0
-    for key in T_b.keys():
-        if np.abs(int(obs_id) - int(key)) <= 300:  # Within 5 minutes is OK
-            tb_time = key
-            break
-    if not tb_time:
-        raise ValueError("No Mars data for obs {}".format(obs_id))
-    return T_b[tb_time][band]

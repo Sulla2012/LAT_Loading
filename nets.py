@@ -6,7 +6,7 @@ import datetime as dt
 import numpy as np
 import dill as pk
 
-from optical_loading import pwv_interp
+from utils.optical_loading import pwv_interp
 
 import glob
 
