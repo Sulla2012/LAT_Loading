@@ -1,8 +1,11 @@
 from astropy.io import fits
 from scipy.interpolate import make_interp_spline
+from functools import cache
+from ..bands.bands import bandcenters
 
 
-def get_uranus_temp(band: str):
+@cache  # We could pre-calculate the bandcenter adjusted temepratures and save it but this is more robust to changing the bandcenters and should be nearly as fast.
+def get_uranus_temp(band: str, ufm: str) -> float:
     """
     Get the temperature of Uranus for a given band.
 
@@ -26,20 +29,24 @@ def get_uranus_temp(band: str):
     freqs = data["wave"]
     T_rj = data["T_rj"]
     interp = make_interp_spline(freqs, T_rj)
+    try:
+        bandcenter = bandcenters[ufm][band]
+    except KeyError:
+        raise KeyError("Error: invalid ufm {} or band {}".format(ufm, band))
 
     # TODO: accurate bandcenters
     if band == "030":
-        uranus_temp = interp(30)
+        uranus_temp = interp(27.9)
     elif band == "040":
-        uranus_temp = interp(40)
+        uranus_temp = interp(40.2)
     elif band == "090":
-        uranus_temp = interp(90)
+        uranus_temp = interp(bandcenter)
     elif band == "150":
-        uranus_temp = interp(150)
+        uranus_temp = interp(bandcenter)
     elif band == "220":
-        uranus_temp = interp(220)
+        uranus_temp = interp(bandcenter)
     elif band == "280":
-        uranus_temp = interp(280)
+        uranus_temp = interp(bandcenter)
     else:
         raise ValueError("Error: invalid band {}".format(band))
     return uranus_temp

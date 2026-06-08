@@ -3,8 +3,9 @@ import pandas as pd
 
 import utils.map_utils as mu
 from utils import abscal_utils as au
-from utils.optical_loading import pwv_interp, keys_from_wafer, get_bandwidth
+from utils.optical_loading import pwv_interp, keys_from_wafer
 from planet_models.core import get_planet_temp
+from bands.bands import bandwidths, bandcenters
 
 from sotodlib import core
 import sotodlib.io.metadata as io_meta
@@ -125,47 +126,11 @@ if __name__ == "__main__":
 
     cal_dict = {}
 
-    # make bandwidth dict for speed
-    # Note we use the site measured bandwidth for an array if available
-    # Else we use the average of all arrays at that freq (also site measured)
-    bandwidths = {}
-    for stream_id in set(stream_ids):
-        ufm = stream_id.split("_")[1]
-        if ufm not in bandwidths.keys():
-            bandwidths[ufm] = {}
-        if "mv" in ufm:
-            cur_bands = ["090", "150"]
-        elif "uv" in ufm:
-            cur_bands = ["220", "280"]
-        else:
-            raise ValueError(f"Error: ufm {ufm} is not valid")
-        for band in cur_bands:
-            bandwidths[ufm][band] = get_bandwidth(band=band, ufm=ufm, path="./")
-
     ctx = core.Context(
         "/global/cfs/cdirs/sobs/metadata/lat/contexts/smurf_detsets_local.yaml"
     )
 
-    arrays = [
-        "mv21",
-        "mv24",
-        "mv28",
-        "mv13",
-        "mv20",
-        "mv34",
-        "mv14",
-        "mv32",
-        "mv49",
-        "mv11",
-        "mv25",
-        "mv26",
-        "uv31",
-        "uv42",
-        "uv48",
-        "uv38",
-        "uv39",
-        "uv46",
-    ]
+    arrays = bandcenters.keys()
 
     # Set up arrays to hold our measurements
     radii_saturn = {array: {} for array in arrays}
@@ -173,7 +138,11 @@ if __name__ == "__main__":
     means_fits_saturn = {array: {} for array in arrays}
 
     for array in arrays:
-        if "mv" in array:
+        if "ln" in array:
+            radii_saturn[array] = {"f030": [], "f040": []}
+            means_datas_saturn[array] = {"f030": [], "f040": []}
+            means_fits_saturn[array] = {"f030": [], "f040": []}
+        elif "mv" in array:
             radii_saturn[array] = {"f090": [], "f150": []}
             means_datas_saturn[array] = {"f090": [], "f150": []}
             means_fits_saturn[array] = {"f090": [], "f150": []}
@@ -236,7 +205,7 @@ if __name__ == "__main__":
             print("Error: no planet in tags: {}".format(tags[-1]))
             continue
 
-        planet_temp = get_planet_temp(planet=planet, obs_id=obs_id, band=band)
+        planet_temp = get_planet_temp(planet=planet, obs_id=obs_id, band=band, ufm=ufm)
 
         subdir = obs_ids[i]
         resid_name = subdir + "_ufm_" + ufm + "_f" + band + "_resid.fits"

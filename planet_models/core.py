@@ -3,7 +3,7 @@ from .saturn_temps import get_saturn_temp
 from .uranus_temps import get_uranus_temp
 
 
-def get_planet_temp(planet: str, obs_id: str, band: str):
+def get_planet_temp(planet: str, obs_id: str, band: str, ufm: str) -> float:
     """
     Get the planet temperature for a given planet, observation ID, and band.
 
@@ -31,7 +31,7 @@ def get_planet_temp(planet: str, obs_id: str, band: str):
     elif planet.lower() == "saturn":
         planet_temp = get_saturn_temp(band)
     elif planet.lower() == "uranus":
-        planet_temp = get_uranus_temp(band)
+        planet_temp = get_uranus_temp(band=band, ufm=ufm)
     else:
         raise ValueError("Error: invalid planet {}".format(planet))
     return planet_temp

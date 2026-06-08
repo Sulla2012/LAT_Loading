@@ -13,6 +13,8 @@ import sotodlib.coords.det_match as dm
 from so3g.hk import load_range
 import sotodlib.io.load_book as lb
 
+from functools import cache
+
 
 # Dict mapping OTs to UFMs
 ufm_dict = {
@@ -164,6 +166,7 @@ def pwv_interp(
     return pwv
 
 
+@cache
 def bandpass_interp(
     band: str, ufm: str, path: str = "/so/home/jorlo/data/lat_bandpasses/"
 ) -> interpolate.interp1d:
@@ -189,9 +192,8 @@ def bandpass_interp(
     return interpolate.interp1d(x, y, bounds_error=False, fill_value=0)
 
 
-def get_bandwidth(
-    band: str, ufm: str, path: str = "/so/home/jorlo/data/lat_bandpasses/"
-) -> float:
+@cache
+def get_bandwidth(band: str, ufm: str, path: str = "./bands") -> float:
     """
     Function which gets the site measured bandwidth for a given ufm and band.
     If no data is available for the particular ufm of interest, the average
@@ -210,6 +212,11 @@ def get_bandwidth(
     -------
     bandwidth : float
         The bandwidth, in GHz
+
+    Raises
+    ------
+    ValueError
+        If invalid band is passed.
     """
     if band == "090" or band == "150":
         df = pd.read_csv(path + "LAT_MF_bands.csv")
