@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "latcom"
+version = "0.2.0"
+requires-python = ">=3.10"
+dependencies = [
+    "astropy,
+    "dill",
+    "h5py",
+    "matplotlib",
+    "numpy",
+    "pandas",
+    "pixell",
+    "pyephem",
+    "PyYAML",
+    "Requests",
+    "scipy",
+    "so3g",
+    "sotodlib",
+    "ruff",
+]
+
+[tool.ruff.lint]
+preview = true
+extend-select = ["I", "DOC501"]
+# ignore = ["D417", "D400", "D200", "D103", "D102", "D101", "D100"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"

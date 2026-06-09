@@ -1,28 +1,29 @@
-    arrays = bandcenters.keys()
+"""
+arrays = bandcenters.keys()
 
-    # Set up arrays to hold our measurements
-    radii_saturn = {array: {} for array in arrays}
-    means_datas_saturn = {array: {} for array in arrays}
-    means_fits_saturn = {array: {} for array in arrays}
+# Set up arrays to hold our measurements
+radii_saturn = {array: {} for array in arrays}
+means_datas_saturn = {array: {} for array in arrays}
+means_fits_saturn = {array: {} for array in arrays}
 
-    for array in arrays:
-        if "ln" in array:
-            radii_saturn[array] = {"f030": [], "f040": []}
-            means_datas_saturn[array] = {"f030": [], "f040": []}
-            means_fits_saturn[array] = {"f030": [], "f040": []}
-        elif "mv" in array:
-            radii_saturn[array] = {"f090": [], "f150": []}
-            means_datas_saturn[array] = {"f090": [], "f150": []}
-            means_fits_saturn[array] = {"f090": [], "f150": []}
-        elif "uv" in array:
-            radii_saturn[array] = {"f220": [], "f280": []}
-            means_datas_saturn[array] = {"f220": [], "f280": []}
-            means_fits_saturn[array] = {"f220": [], "f280": []}
+for array in arrays:
+    if "ln" in array:
+        radii_saturn[array] = {"f030": [], "f040": []}
+        means_datas_saturn[array] = {"f030": [], "f040": []}
+        means_fits_saturn[array] = {"f030": [], "f040": []}
+    elif "mv" in array:
+        radii_saturn[array] = {"f090": [], "f150": []}
+        means_datas_saturn[array] = {"f090": [], "f150": []}
+        means_fits_saturn[array] = {"f090": [], "f150": []}
+    elif "uv" in array:
+        radii_saturn[array] = {"f220": [], "f280": []}
+        means_datas_saturn[array] = {"f220": [], "f280": []}
+        means_fits_saturn[array] = {"f220": [], "f280": []}
 
-            radii_mars = copy.deepcopy(radii_saturn)
+        radii_mars = copy.deepcopy(radii_saturn)
 
-    means_datas_mars = copy.deepcopy(means_datas_saturn)
-    means_fits_mars = copy.deepcopy(means_fits_saturn)
+means_datas_mars = copy.deepcopy(means_datas_saturn)
+means_fits_mars = copy.deepcopy(means_fits_saturn)
 def make_planet_profiles(solved_file: str) -> tuple(np.array, np.array, np.array):
     weight_file = solved_file.replace("solved", "weights")
     binned_file = solved_file.replace("solved", "binned")
@@ -61,3 +62,4 @@ def make_planet_profiles(solved_file: str) -> tuple(np.array, np.array, np.array
     ) = mu.fit_gauss_pointing(solved, weights, pixmap, make_plots=True)
 
     return radii_data, means_data, means_fit
+"""
