@@ -1,11 +1,11 @@
 import numpy as np
 import pandas as pd
 
-import utils.map_utils as mu
-from utils import abscal_utils as au
-from utils.optical_loading import pwv_interp, keys_from_wafer
-from planet_models.core import get_planet_temp
-from bands.bands import bandwidths, bandcenters
+from latcom.utils import map_utils as mu
+from latcom.utils import abscal_utils as au
+from latcom.utils.optical_loading import pwv_interp, keys_from_wafer
+from latcom.planet_models.core import get_planet_temp
+from latcom.bands.bands import bandwidths, bandcenters
 
 from sotodlib import core
 import sotodlib.io.metadata as io_meta
@@ -21,39 +21,6 @@ import copy
 import argparse as ap
 
 
-def data_to_cal_factor(
-    p_meas, beam_solid_angle, planet_diameter, bandwidth, planet_temp
-):
-    fiducial_solid_angle = mu.angular_diameter_to_solid_angle(planet_diameter)
-
-    fill_factor = fiducial_solid_angle / (beam_solid_angle)
-    t_eff_planet = planet_temp * fill_factor
-    cal_factor = t_eff_planet / p_meas  # K -> pW
-
-    opt_eff = ((1 / (cal_factor) * u.pW / u.K) / (consts.k_B * bandwidth * u.GHz)).to(1)
-
-    return cal_factor, opt_eff
-
-
-# Uniform +/- 20% from nominal. TODO: Make the percentage offset a variable
-fwhm_cuts = {
-    "030": [6.0, 8.8],
-    "040": [4.1, 6.1],
-    "090": [1.8, 2.6],
-    "150": [1.1, 1.6],
-    "220": [0.8, 1.2],
-    "280": [0.7, 1.0],
-}
-
-# These are roughly 20% - 500% the expected beam value
-beam_volume_cuts = {
-    "090": [8e-8, 2e-6],
-    "150": [4e-8, 1e-6],
-    "220": [1e-8, 2e-7],
-    "280": [1e-8, 2e-7],
-}
-
-
 def _make_parser() -> ap.ArgumentParser:
     parser = ap.ArgumentParser(
         description="Compute abscal factors for Saturn/Mars observations"
@@ -65,12 +32,7 @@ def _make_parser() -> ap.ArgumentParser:
         default="/global/cfs/cdirs/sobs/users/skh/data/beams/lat/pointing_model_atm_relcal/",
         help="Path to h5 file containing beam fits",
     )
-    parser.add_argument(
-        "--make-profiles",
-        "-mp",
-        action="store_true",
-        help="Whether to make beam profile plots for each observation (for diagnostic purposes, not needed for abscal computation)",
-    )
+
     parser.add_argument(
         "--no-results",
         "-nr",
@@ -83,7 +45,8 @@ def _make_parser() -> ap.ArgumentParser:
 if __name__ == "__main__":
     parser = _make_parser()
     args = parser.parse_args()
-    with open("data/atmosphere_eff.pk", "rb") as f:
+    #TODO: set lacom path
+    with open("../data/atmosphere_eff.pk", "rb") as f:
         atmosphere_eff = pk.load(f)
 
     fiducial_elevation = 50
