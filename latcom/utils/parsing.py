@@ -1,7 +1,8 @@
-import pandas as pd
-from . import map_utils as mu
-import numpy as np
 import astropy.units as u
+import numpy as np
+import pandas as pd
+
+from . import map_utils as mu
 
 
 def parse_dict(net_dict: dict) -> pd.DataFrame:
@@ -27,7 +28,7 @@ def parse_dict(net_dict: dict) -> pd.DataFrame:
 
     freqs = ["090", "150", "220", "280"]
 
-    units = "\mu K_{RJ}"
+    units = r"\mu K_{RJ}"
 
     for freq in (
         freqs
@@ -44,14 +45,14 @@ def parse_dict(net_dict: dict) -> pd.DataFrame:
                 ch = "UHF_1"
             else:
                 ch = "UHF_2"
-        if units == "\mu K_{CMB}":
+        if units == r"\mu K_{CMB}":
             temp_conv = mu.temp_conv(
                 T_B=2.725 * u.Kelvin, flavor=flavor, ch=ch, kind="baseline"
             )
         else:
             temp_conv = 1
         for ufm in ufms:
-            for key in net_dict.keys():
+            for key in net_dict:
                 if ufm not in key:
                     continue
                 for sub_key in net_dict[key].keys():
@@ -150,7 +151,7 @@ def parse_neps(net_dict: dict) -> pd.DataFrame:
         freqs
     ):  # This is slighly inefficient but the ezest way to sort by freq then ufm
         for ufm in ufms:
-            for key in net_dict.keys():
+            for key in net_dict:
                 if ufm not in key:
                     continue
                 for sub_key in net_dict[key].keys():

@@ -1,20 +1,17 @@
+import datetime as dt
+from functools import cache
 from os import listdir
 from os.path import isfile, join
+
 import h5py
 import numpy as np
 import pandas as pd
-import datetime as dt
+import sotodlib.coords.det_match as dm
+import sotodlib.io.load_book as lb
 from scipy import interpolate
-
-
+from so3g.hk import load_range
 from sotodlib import core
 from sotodlib.io import hkdb
-import sotodlib.coords.det_match as dm
-from so3g.hk import load_range
-import sotodlib.io.load_book as lb
-
-from functools import cache
-
 
 # Dict mapping OTs to UFMs
 ufm_dict = {
@@ -28,10 +25,10 @@ ufm_dict = {
 
 
 def ot_from_ufm(ufm: str) -> str:
-    for ot in ufm_dict.keys():
+    for ot in ufm_dict:
         if ufm in ufm_dict[ot]:
             return ot
-    raise ValueError("Error: no OT found for UFM {}".format(ufm))
+    raise ValueError(f"Error: no OT found for UFM {ufm}")
 
 
 # Dict that tracks UXM measurements. Low is the low freq channel, high is the high
@@ -133,7 +130,7 @@ def keys_from_wafer(wafer: str, band: str):
 
 
 def pwv_interp(
-    filepath: str = "apex_pwv_data.npz", time_cut: float = 17410 * 1e5
+    filepath: str = "/global/u2/j/jorlo/dev/LAT_Loading/latcom/utils/apex_pwv_data.npz", time_cut: float = 17410 * 1e5
 ) -> interpolate.interp1d:
     """
     Interpolates APEX pwv data. Should be replaced by SO radiometer when it becomes available
@@ -155,9 +152,9 @@ def pwv_interp(
         for k in x.keys():
             data[k] = x[k]
 
-    flags = np.where((data["timestamp"] >= time_cut))[0]
+    flags = np.where(data["timestamp"] >= time_cut)[0]
 
-    for key in data.keys():
+    for key in data:
         data[key] = data[key][flags]
 
     data["pwv"] = 0.03 + 0.84 * data["pwv"]  # APEX to CLASS best fit from Max
@@ -175,7 +172,7 @@ def bandpass_interp(
     elif band == "220" or band == "280":
         df = pd.read_csv(path + "LAT_UHF_bands.csv")
     else:
-        raise ValueError("ERROR: band {} not valid".format(band))
+        raise ValueError(f"ERROR: band {band} not valid")
 
     x = df["frequency"].to_numpy()
     if str(ufm + "_f" + band) in df.keys():
@@ -223,7 +220,7 @@ def get_bandwidth(band: str, ufm: str, path: str = "./bands") -> float:
     elif band == "220" or band == "280":
         df = pd.read_csv(path + "LAT_UHF_bands.csv")
     else:
-        raise ValueError("ERROR: band {} not valid".format(band))
+        raise ValueError(f"ERROR: band {band} not valid")
 
     x = np.linspace(20, 375, 10000)
     if str(ufm + "_f" + band) in df.keys():

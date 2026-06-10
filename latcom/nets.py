@@ -1,14 +1,11 @@
+import datetime as dt
+import glob
+
+import dill as pk
+import numpy as np
 from sotodlib import core
 from sotodlib.tod_ops.flags import get_det_bias_flags
-
-import datetime as dt
-
-import numpy as np
-import dill as pk
-
 from utils.optical_loading import pwv_interp
-
-import glob
 
 results = sorted(glob.glob("results_*.pk"))[-1]
 
@@ -121,16 +118,15 @@ for i in range(start_index, len(obs_list)):
             ):
                 print("Already done")
                 continue
-        elif "uv" in cur_wafer:
-            if (
-                cur_obs["obs_id"] in net_dict[cur_wafer]["220"]["obs"]
-                and cur_obs["obs_id"] in net_dict[cur_wafer]["280"]["obs"]
-            ):
-                print("Already done")
-                continue
+        elif "uv" in cur_wafer and (
+            cur_obs["obs_id"] in net_dict[cur_wafer]["220"]["obs"]
+            and cur_obs["obs_id"] in net_dict[cur_wafer]["280"]["obs"]
+        ):
+            print("Already done")
+            continue
 
         if cur_wafer not in result_dict.keys():
-            print("No abscal for ufm {}".format(cur_wafer))
+            print(f"No abscal for ufm {cur_wafer}")
             continue
 
         for band in bands:
@@ -149,8 +145,8 @@ for i in range(start_index, len(obs_list)):
                 meta = ctx.get_meta(
                     cur_obs["obs_id"],
                     dets={
-                        "dets:stream_id": str("ufm_") + str(cur_wafer),
-                        "dets:wafer.bandpass": str("f") + str(band),
+                        "dets:stream_id": "ufm_" + str(cur_wafer),
+                        "dets:wafer.bandpass": "f" + str(band),
                     },
                 )
             except:
@@ -178,9 +174,9 @@ for i in range(start_index, len(obs_list)):
             elif "noiseT" in meta.preprocess.keys():
                 wnoise = meta.preprocess.noiseT.white_noise[net_flag]
             else:
-                print("Error: no valid noise ken in {}".format(meta.preprocess.keys()))
+                print(f"Error: no valid noise ken in {meta.preprocess.keys()}")
                 continue
-            ndets = len(np.where((wnoise != 0))[0])
+            ndets = len(np.where(wnoise != 0)[0])
 
             net_mes = 1 / np.sqrt(2) * wnoise * raw_cal
             clean_nets = []

@@ -1,20 +1,16 @@
-import numpy as np
-import matplotlib.pyplot as plt
-
-from pixell import enmap
-
-from scipy.optimize import curve_fit
-from scipy.interpolate import interp1d
-
-import astropy.units as u
-import astropy.constants as const
-
 import datetime as dt
-import ephem
 import os
-import yaml
 
-import so3g.proj as proj
+import astropy.constants as const
+import astropy.units as u
+import ephem
+import matplotlib.pyplot as plt
+import numpy as np
+import yaml
+from pixell import enmap
+from scipy.interpolate import interp1d
+from scipy.optimize import curve_fit
+from so3g import proj
 
 # os.environ["JBOLO_PATH"] = "/so/home/jorlo/dev/jbolo"
 # os.environ["JBOLO_MODELS_PATH"] = "/so/home/jorlo/dev/bolocalc-so-model"
@@ -496,7 +492,7 @@ def get_planet_diameter(obs_id, planet):
     date = dt.datetime.utcfromtimestamp(timestamp)
     site.date = ephem.Date(date)
     saturn = getattr(ephem, planet)(site)
-    dia = getattr(saturn, "size")
+    dia = saturn.size
     return dia
 
 

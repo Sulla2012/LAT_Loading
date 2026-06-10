@@ -62,4 +62,48 @@ def make_planet_profiles(solved_file: str) -> tuple(np.array, np.array, np.array
     ) = mu.fit_gauss_pointing(solved, weights, pixmap, make_plots=True)
 
     return radii_data, means_data, means_fit
+
+        if args.make_profiles:
+            solved_file = (
+                "/so/home/saianeesh/data/beams/lat/source_maps/per_obs/{}/".format(
+                    planet
+                )
+                + str(obs_id[:5])
+                + "/"
+                + str(obs_ids[i])
+                + "/"
+                + str(obs_ids[i])
+                + "_"
+                + str(stream_ids[i])
+                + "_"
+                + str(bands[i])
+                + "_solved.fits"
+            )
+            radii_data, means_data, means_fit = au.make_planet_profiles(
+                solved_file=solved_file,
+            )
+            if radii_data is None:
+                continue
+            if planet == "mars":
+                radii_mars[ufm][bands[i]].append(radii_data)
+                means_datas_mars[ufm][bands[i]].append(means_data)
+                means_fits_mars[ufm][bands[i]].append(means_fit)
+            elif planet == "saturn":
+                radii_saturn[ufm][bands[i]].append(radii_data)
+                means_datas_saturn[ufm][bands[i]].append(means_data)
+                means_fits_saturn[ufm][bands[i]].append(means_fit)
+            else:
+                continue
+
+    if parser.parse_args().make_profiles:
+        rad_dict = {
+            "rad_sat": radii_saturn,
+            "data_sat": means_datas_saturn,
+            "fit_sat": means_fits_saturn,
+            "rad_mars": radii_mars,
+            "data_mars": means_datas_mars,
+            "fit_mars": means_fits_mars,
+        }
+        with open("mars_saturn.pk", "wb") as f:
+            pk.dump(rad_dict, f)
 """

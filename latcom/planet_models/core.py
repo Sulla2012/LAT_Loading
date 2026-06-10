@@ -33,5 +33,5 @@ def get_planet_temp(planet: str, obs_id: str, band: str, ufm: str) -> float:
     elif planet.lower() == "uranus":
         planet_temp = get_uranus_temp(band=band, ufm=ufm)
     else:
-        raise ValueError("Error: invalid planet {}".format(planet))
+        raise ValueError(f"Error: invalid planet {planet}")
     return planet_temp

@@ -1,0 +1,19 @@
+Metadata-Version: 2.4
+Name: latcom
+Version: 0.2.0
+Requires-Python: >=3.10
+Requires-Dist: astropy
+Requires-Dist: dill
+Requires-Dist: h5py
+Requires-Dist: matplotlib
+Requires-Dist: mars_model @ git+https://github.com/Sulla2012/mars_model
+Requires-Dist: numpy
+Requires-Dist: pandas
+Requires-Dist: pixell
+Requires-Dist: pyephem
+Requires-Dist: PyYAML
+Requires-Dist: Requests
+Requires-Dist: scipy
+Requires-Dist: so3g
+Requires-Dist: sotodlib
+Requires-Dist: ruff

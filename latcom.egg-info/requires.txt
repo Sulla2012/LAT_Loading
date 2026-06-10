@@ -1,0 +1,15 @@
+astropy
+dill
+h5py
+matplotlib
+mars_model @ git+https://github.com/Sulla2012/mars_model
+numpy
+pandas
+pixell
+pyephem
+PyYAML
+Requests
+scipy
+so3g
+sotodlib
+ruff

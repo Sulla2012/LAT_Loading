@@ -1,13 +1,13 @@
-import numpy as np
 import datetime as dt
-import requests
 from io import StringIO
 
+import numpy as np
+import requests
 
 APEX_DATA_URL = "http://archive.eso.org/wdb/wdb/eso/meteo_apex/query"
 
 start_date = dt.datetime(2025, 4, 1)
-end_date = dt.datetime(2026, 5, 18)
+end_date = dt.datetime(2026, 6, 18)
 
 request = requests.post(
     APEX_DATA_URL,

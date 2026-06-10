@@ -1,24 +1,22 @@
+import argparse as ap
+import datetime as dt
+import os
+from zoneinfo import ZoneInfo
+
+import dill as pk
+import h5py
 import numpy as np
 import pandas as pd
-
-from latcom.utils import map_utils as mu
-from latcom.utils import abscal_utils as au
-from latcom.utils.optical_loading import pwv_interp, keys_from_wafer
-from latcom.planet_models.core import get_planet_temp
-from latcom.bands.bands import bandwidths, bandcenters
-
-from sotodlib import core
 import sotodlib.io.metadata as io_meta
-
 from astropy import units as u
-from astropy import constants as consts
+from sotodlib import core
+from sotodlib.core.metadata.loader import LoaderError
 
-import datetime as dt
-import dill as pk
-import os
-import h5py
-import copy
-import argparse as ap
+from latcom.bands.bands import bandwidths
+from latcom.planet_models.core import get_planet_temp
+from latcom.utils import abscal_utils as au
+from latcom.utils import map_utils as mu
+from latcom.utils.optical_loading import keys_from_wafer, pwv_interp
 
 
 def _make_parser() -> ap.ArgumentParser:
@@ -66,26 +64,28 @@ if __name__ == "__main__":
     times = []
     stream_ids = []
     bands = []
-    for o in f.keys():
-        for s in f[o].keys():
-            for b in f[o][s].keys():
+    for o in f:
+        for s in f[o]:
+            for b in f[o][s]:
                 obs_ids += [o]
                 times += [float(o.split("_")[1])]
                 stream_ids += [s]
                 bands += [b]
-    limit_bands = ["f090", "f150", "f220", "f280"]
+    limit_bands = ["f030", "f040", "f090", "f150", "f220", "f280"]
     msk = np.isin(bands, limit_bands)
     obs_ids = np.array(obs_ids)[msk]
     times = np.array(times)[msk]
     stream_ids = np.array(stream_ids)[msk]
     bands = np.array(bands)[msk]
 
-    amans = np.array(
-        [
-            core.AxisManager.load(f[os.path.join(o, s, b)])
-            for o, s, b in zip(obs_ids, stream_ids, bands)
-        ]
-    )
+    amans = []
+    for o, s, b in zip(obs_ids, stream_ids, bands):
+        try:
+            amans.append(core.AxisManager.load(f[os.path.join(o, s, b, "")]))
+        except KeyError:
+            continue
+
+    amans = np.array(amans)
 
     cal_dict = {}
 
@@ -93,31 +93,6 @@ if __name__ == "__main__":
         "/global/cfs/cdirs/sobs/metadata/lat/contexts/smurf_detsets_local.yaml"
     )
 
-    arrays = bandcenters.keys()
-
-    # Set up arrays to hold our measurements
-    radii_saturn = {array: {} for array in arrays}
-    means_datas_saturn = {array: {} for array in arrays}
-    means_fits_saturn = {array: {} for array in arrays}
-
-    for array in arrays:
-        if "ln" in array:
-            radii_saturn[array] = {"f030": [], "f040": []}
-            means_datas_saturn[array] = {"f030": [], "f040": []}
-            means_fits_saturn[array] = {"f030": [], "f040": []}
-        elif "mv" in array:
-            radii_saturn[array] = {"f090": [], "f150": []}
-            means_datas_saturn[array] = {"f090": [], "f150": []}
-            means_fits_saturn[array] = {"f090": [], "f150": []}
-        elif "uv" in array:
-            radii_saturn[array] = {"f220": [], "f280": []}
-            means_datas_saturn[array] = {"f220": [], "f280": []}
-            means_fits_saturn[array] = {"f220": [], "f280": []}
-
-            radii_mars = copy.deepcopy(radii_saturn)
-
-    means_datas_mars = copy.deepcopy(means_datas_saturn)
-    means_fits_mars = copy.deepcopy(means_fits_saturn)
 
     for i, aman in enumerate(amans):
         obs_id = obs_ids[i].split("_")[1]
@@ -128,25 +103,25 @@ if __name__ == "__main__":
         fitted_fwhm = aman.data_fwhm.to(u.arcmin).value
         data_solid_angle = aman.data_solid_angle_corr.value
 
-        if "amp_outer" in aman.keys():
+        if "amp_outer" in aman:
             amp = aman.amp.value + aman.amp_outer.value
         else:
             amp = aman.amp.value
 
         # First cut is on FWHM
-        if fwhm_cuts[band][1] < fitted_fwhm or fitted_fwhm < fwhm_cuts[band][0]:
-            print(fwhm_cuts[band][0], fitted_fwhm, fwhm_cuts[band][1], band, ufm)
+        if au.fwhm_cuts[band][1] < fitted_fwhm or fitted_fwhm < au.fwhm_cuts[band][0]:
+            print(au.fwhm_cuts[band][0], fitted_fwhm, au.fwhm_cuts[band][1], band, ufm)
             continue
 
         # Second cut is on beam volume
         if (
-            beam_volume_cuts[band][1] < data_solid_angle
-            or data_solid_angle < beam_volume_cuts[band][0]
+            au.beam_volume_cuts[band][1] < data_solid_angle
+            or data_solid_angle < au.beam_volume_cuts[band][0]
         ):
             print(
-                beam_volume_cuts[band][0],
+                au.beam_volume_cuts[band][0],
                 data_solid_angle,
-                beam_volume_cuts[band][1],
+                au.beam_volume_cuts[band][1],
                 band,
                 ufm,
             )
@@ -155,7 +130,7 @@ if __name__ == "__main__":
         # Get planet temperature
         try:
             tags = ctx.obsdb.get(obs_ids[i], tags=True)["tags"]
-        except:
+        except LoaderError:
             continue
 
         if "mars" in tags:
@@ -165,10 +140,12 @@ if __name__ == "__main__":
         elif "uranus" in tags:
             planet = "uranus"
         else:
-            print("Error: no planet in tags: {}".format(tags[-1]))
+            print(f"Error: no planet in tags: {tags[-1]}")
             continue
 
         planet_temp = get_planet_temp(planet=planet, obs_id=obs_id, band=band, ufm=ufm)
+        if planet_temp is None:
+            continue
 
         subdir = obs_ids[i]
         resid_name = subdir + "_ufm_" + ufm + "_f" + band + "_resid.fits"
@@ -177,7 +154,7 @@ if __name__ == "__main__":
 
         # Third cut is on RMSE
         if rmse > 0.05:
-            print("RMSE = {} > 0.05".format(rmse))
+            print(f"RMSE = {rmse} > 0.05")
             continue
 
         # Get pwv/el adjustment
@@ -194,8 +171,8 @@ if __name__ == "__main__":
 
         try:
             pwv_obs = pwv(obs_id)
-        except:
-            print("obs {} outside of pwv range".format(obs_id))
+        except ValueError:
+            print(f"obs {obs_id} outside of pwv range")
             continue
         if np.isnan(pwv_obs):
             continue
@@ -216,13 +193,13 @@ if __name__ == "__main__":
             )
         )[0][0]
         try:
-            obs_key_el = [
+            obs_key_el = next([
                 el
-                for el in atmosphere_eff["LF"]["LF_1"].keys()
+                for el in atmosphere_eff["LF"]["LF_1"]
                 if np.abs(int(el) - el_obs) < 2.5
-            ][0]
+            ])
         except:
-            print("El {} for obs {} out of range".format(el_obs, obs_ids[i]))
+            print(f"El {el_obs} for obs {obs_ids[i]} out of range")
             continue
 
         t_atm_obs = atmosphere_eff[ufm_type][ufm_band][obs_key_el][obs_idx_pwv]
@@ -235,14 +212,14 @@ if __name__ == "__main__":
             int(obs_id), planet.capitalize()
         )  # arcsec, we are using exact temperatures
 
-        cal_factor, cal_opt_efc = data_to_cal_factor(
+        cal_factor, cal_opt_efc = au.data_to_cal_factor(
             p_meas=adjusted_amplitude,
             beam_solid_angle=data_solid_angle,
             planet_diameter=planet_diameter,
             bandwidth=bandwidths[ufm][band],
             planet_temp=planet_temp,
         )
-        raw_factor, raw_opt_efc = data_to_cal_factor(
+        raw_factor, raw_opt_efc = au.data_to_cal_factor(
             p_meas=amp,
             beam_solid_angle=data_solid_angle,
             planet_diameter=planet_diameter,
@@ -266,49 +243,6 @@ if __name__ == "__main__":
             "time": obs_id,
         }
 
-        if args.make_profiles:
-            solved_file = (
-                "/so/home/saianeesh/data/beams/lat/source_maps/per_obs/{}/".format(
-                    planet
-                )
-                + str(obs_id[:5])
-                + "/"
-                + str(obs_ids[i])
-                + "/"
-                + str(obs_ids[i])
-                + "_"
-                + str(stream_ids[i])
-                + "_"
-                + str(bands[i])
-                + "_solved.fits"
-            )
-            radii_data, means_data, means_fit = au.make_planet_profiles(
-                solved_file=solved_file,
-            )
-            if radii_data is None:
-                continue
-            if planet == "mars":
-                radii_mars[ufm][bands[i]].append(radii_data)
-                means_datas_mars[ufm][bands[i]].append(means_data)
-                means_fits_mars[ufm][bands[i]].append(means_fit)
-            elif planet == "saturn":
-                radii_saturn[ufm][bands[i]].append(radii_data)
-                means_datas_saturn[ufm][bands[i]].append(means_data)
-                means_fits_saturn[ufm][bands[i]].append(means_fit)
-            else:
-                continue
-
-    if parser.parse_args().make_profiles:
-        rad_dict = {
-            "rad_sat": radii_saturn,
-            "data_sat": means_datas_saturn,
-            "fit_sat": means_fits_saturn,
-            "rad_mars": radii_mars,
-            "data_mars": means_datas_mars,
-            "fit_mars": means_fits_mars,
-        }
-        with open("mars_saturn.pk", "wb") as f:
-            pk.dump(rad_dict, f)
 
     if save_results:
         with open("abscals.pk", "wb") as f:
@@ -316,10 +250,10 @@ if __name__ == "__main__":
 
         result_dict = {}
 
-        for key in cal_dict.keys():
+        for key in cal_dict:
             ufm = key.split("_")[0]
             freq = key.split("_")[1]
-            if ufm in result_dict.keys():
+            if ufm in result_dict:
                 continue
             if "090" in freq or "150" in freq:
                 result_dict[ufm] = {
@@ -383,7 +317,7 @@ if __name__ == "__main__":
                         "time": [],
                     },
                 }
-        for key in cal_dict.keys():
+        for key in cal_dict:
             ufm = key.split("_")[0]
             freq = key.split("_")[1]
             result_dict[ufm][freq]["cal"].append(cal_dict[key]["adj_cal"])
@@ -398,10 +332,10 @@ if __name__ == "__main__":
             result_dict[ufm][freq]["source"].append(cal_dict[key]["source"])
             result_dict[ufm][freq]["time"].append(cal_dict[key]["time"])
 
-        today = dt.date.today()
+        today = dt.datetime.now(tz=ZoneInfo("America/New_York")).date()
         date_str = str(today.month).zfill(2) + str(today.day).zfill(2) + str(today.year)
 
-        with open("results_{}.pk".format(date_str), "wb") as f:
+        with open(f"results_{date_str}.pk", "wb") as f:
             pk.dump(result_dict, f)
 
         # Now to write the manifest db
@@ -438,10 +372,10 @@ if __name__ == "__main__":
                 kind="baseline",
             )  # Temperature for rj->cmb
             for ufm in ufms:
-                for key in result_dict.keys():
+                for key in result_dict:
                     if ufm not in key:
                         continue
-                    for sub_key in result_dict[key].keys():
+                    for sub_key in result_dict[key]:
                         if freq not in sub_key:
                             continue
                         cur_cals = np.array(result_dict[key][sub_key]["cal"])
@@ -477,7 +411,7 @@ if __name__ == "__main__":
             }
         )
 
-        for key in lat_times.keys():
+        for key in lat_times:
             data = []
 
             # For each period, we're going to compute the average abscal for each ufm and freq
@@ -550,7 +484,7 @@ if __name__ == "__main__":
                 ]
             )
             rs.rows = data
-            io_meta.write_dataset(rs, "abscals.h5", "{}".format(key), overwrite=True)
+            io_meta.write_dataset(rs, "abscals.h5", f"{key}", overwrite=True)
 
         # Record in ManifestDb.
         scheme = core.metadata.ManifestScheme()

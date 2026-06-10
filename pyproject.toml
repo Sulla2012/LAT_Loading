@@ -2,15 +2,19 @@
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools]
+packages = ["latcom"]
+
 [project]
 name = "latcom"
 version = "0.2.0"
 requires-python = ">=3.10"
 dependencies = [
-    "astropy,
+    "astropy",
     "dill",
     "h5py",
     "matplotlib",
+    "mars_model @ git+https://github.com/Sulla2012/mars_model",
     "numpy",
     "pandas",
     "pixell",
@@ -26,7 +30,7 @@ dependencies = [
 [tool.ruff.lint]
 preview = true
 extend-select = ["I", "DOC501"]
-# ignore = ["D417", "D400", "D200", "D103", "D102", "D101", "D100"]
+
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
