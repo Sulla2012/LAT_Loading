@@ -3,6 +3,7 @@
 *.pk
 *.cfg
 *.h5
+*.sqlite
 
 __pycache__/
 .ipynb_checkpoints/

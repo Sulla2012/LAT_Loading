@@ -12,6 +12,8 @@ from scipy import interpolate
 from so3g.hk import load_range
 from sotodlib import core
 from sotodlib.io import hkdb
+from sotodlib.io.ancil.pwv import apex_to_tocolin_250701
+
 
 # Dict mapping OTs to UFMs
 ufm_dict = {
@@ -157,7 +159,7 @@ def pwv_interp(
     for key in data:
         data[key] = data[key][flags]
 
-    data["pwv"] = 0.03 + 0.84 * data["pwv"]  # APEX to CLASS best fit from Max
+    data["pwv"] = apex_to_tocolin_250701(data["pwv"])  # APEX to CLASS best fit from Max
 
     pwv = interpolate.interp1d(data["timestamp"], data["pwv"])
     return pwv

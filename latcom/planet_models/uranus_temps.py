@@ -26,7 +26,7 @@ def get_uranus_temp(band: str, ufm: str) -> float:
     ValueError
         If the band is not valid.
     """
-    hdu = fits.open("uranus_esa4.fits")
+    hdu = fits.open("/global/u2/j/jorlo/dev/LAT_Loading/latcom/planet_models/uranus_esa4.fits")
     data = hdu[1].data
     freqs = data["wave"]
     T_rj = data["T_rj"]

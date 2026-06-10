@@ -13,7 +13,7 @@ request = requests.post(
     APEX_DATA_URL,
     data={
         "wdbo": "csv/download",
-        "max_rows_returned": 900000,
+        "max_rows_returned": 9000000,
         "start_date": start_date.strftime("%Y-%m-%dT%H:%M:%S")
         + ".."
         + end_date.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -37,7 +37,7 @@ data = np.genfromtxt(
 )
 
 np.savez(
-    "apex_pwv_data",
+    "/global/homes/j/jorlo/dev/LAT_Loading/latcom/utils/apex_pwv_data",
     dates=data["dates"],
     timestamp=[d.timestamp() for d in data["dates"]],
     pwv=data["pwv"],
