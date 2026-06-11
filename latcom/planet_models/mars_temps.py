@@ -1,5 +1,5 @@
-import numpy as np
 import dill as pk
+import numpy as np
 from marsmodel import mars_brightness
 
 
@@ -24,7 +24,9 @@ def get_mars_temp(obs_id: str, band: str):
            If no Mars data is available for the given observation ID.
     """
     bands = ["030", "040", "090", "150", "220", "280"]
-    with open("/global/u2/j/jorlo/dev/LAT_Loading/latcom/planet_models/mars_temps.pk", "rb") as f:
+    with open(
+        "/global/u2/j/jorlo/dev/LAT_Loading/latcom/planet_models/mars_temps.pk", "rb"
+    ) as f:
         T_b = pk.load(f)
     if band not in bands:
         raise ValueError(
@@ -37,15 +39,20 @@ def get_mars_temp(obs_id: str, band: str):
             return T_b[tb_time][band]
     if not tb_time:
         T_b[int(obs_id)] = {}
-        r = mars_brightness(int(obs_id), hpbw=30, roughness=12,
-                    penetration=12, dielectric=2.25,
-                    frequencies=[30, 40, 90, 150, 220, 280])
+        r = mars_brightness(
+            int(obs_id),
+            hpbw=30,
+            roughness=12,
+            penetration=12,
+            dielectric=2.25,
+            frequencies=[30, 40, 90, 150, 220, 280],
+        )
         for i, cur_band in enumerate(bands):
             T_b[int(obs_id)][cur_band] = r.Tb[i]
-        with open("/global/u2/j/jorlo/dev/LAT_Loading/latcom/planet_models/mars_temps.pk", "wb") as f:
+        with open(
+            "/global/u2/j/jorlo/dev/LAT_Loading/latcom/planet_models/mars_temps.pk",
+            "wb",
+        ) as f:
             pk.dump(T_b, f)
 
         return T_b[int(obs_id)][band]
-    
-
-

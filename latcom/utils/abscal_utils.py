@@ -1,13 +1,14 @@
+import os
 
-from . import map_utils as mu
 import astropy.units as u
-from astropy import constants as consts
-from latcom.utils.optical_loading import pwv_interp
-from latcom.utils import map_utils as mu
+import h5py
 import numpy as np
 import pandas as pd
-from sotodlib import core
 import sotodlib.io.metadata as io_meta
+from astropy import constants as consts
+from sotodlib import core
+
+from latcom.utils import map_utils as mu
 
 
 def data_to_cal_factor(
@@ -25,14 +26,14 @@ def data_to_cal_factor(
 
 
 # Uniform +/- 20% from nominal. TODO: Make the percentage offset a variable
-#fwhm_cuts = {
+# fwhm_cuts = {
 #    "030": [6.0, 8.8],
 #    "040": [4.1, 6.1],
 #    "090": [1.8, 2.6],
 #    "150": [1.1, 1.6],
 #    "220": [0.8, 1.2],
 #    "280": [0.7, 1.0],
-#}
+# }
 
 fwhm_cuts = {
     "030": [6.0, 10.8],
@@ -51,9 +52,12 @@ beam_volume_cuts = {
     "280": [1e-8, 2e-7],
 }
 
-def make_results_dict(cal_dict:dict, ) -> dict:
+
+def make_results_dict(
+    cal_dict: dict,
+) -> dict:
     """
-    Function which makes the result dict from the cal dict. 
+    Function which makes the result dict from the cal dict.
     Mostly this just reorganizes data; cal_dict has primary keys [obs_id],
     this function reorganizes them to [ufm][freq], which is more useful.
 
@@ -184,6 +188,7 @@ def make_results_dict(cal_dict:dict, ) -> dict:
 
     return result_dict
 
+
 def make_db(result_dict: dict) -> core.metadata.ManifestDb:
     """
     Make the ManifestDB from the result_dict.
@@ -211,16 +216,20 @@ def make_db(result_dict: dict) -> core.metadata.ManifestDb:
     data_ufms = []
     cals_cmb = []
     raw_cals_cmb = []
-    data_solid_angles = []
     omegas = []
     obs = []
-
-    pwv = pwv_interp()
 
     freqs = ["030", "040", "090", "150", "220", "280"]
     ufms = sorted(result_dict.keys())
 
-    flavor_dict = {"030":"LF_1", "040":"LF_2","090": "MF_1", "150": "MF_2", "220": "UHF_1", "280": "UHF_2"}
+    flavor_dict = {
+        "030": "LF_1",
+        "040": "LF_2",
+        "090": "MF_1",
+        "150": "MF_2",
+        "220": "UHF_1",
+        "280": "UHF_2",
+    }
 
     for freq in freqs:
         temp_conv = mu.temp_conv(
@@ -230,16 +239,16 @@ def make_db(result_dict: dict) -> core.metadata.ManifestDb:
             kind="baseline",
         )  # Temperature for rj->cmb
         for ufm in ufms:
-            for key in result_dict:
+            for key, sub_dict in result_dict:
                 if ufm not in key:
                     continue
-                for sub_key in result_dict[key]:
+                for sub_key in sub_dict:
                     if freq not in sub_key:
                         continue
-                    cur_cals = np.array(result_dict[key][sub_key]["cal"])
-                    cur_raw_cals = np.array(result_dict[key][sub_key]["raw_cal"])
-                    omega_data = np.array(result_dict[key][sub_key]["omega_data"])
-                    cur_obs = np.array(result_dict[key][sub_key]["obs"])
+                    cur_cals = np.array(sub_dict[sub_key]["cal"])
+                    cur_raw_cals = np.array(sub_dict[sub_key]["raw_cal"])
+                    omega_data = np.array(sub_dict[sub_key]["omega_data"])
+                    cur_obs = np.array(sub_dict[sub_key]["obs"])
                     for j in range(len(cur_cals)):
                         cals.append(cur_cals[j])
                         raw_cals.append(cur_raw_cals[j])
@@ -282,9 +291,7 @@ def make_db(result_dict: dict) -> core.metadata.ManifestDb:
                 if freq in ufs and "mv" in ufm:
                     continue
                 if (
-                    len(
-                        np.where((df.freqs == str(freq)) & (df.ufms == str(ufm)))[0]
-                    )
+                    len(np.where((df.freqs == str(freq)) & (df.ufms == str(ufm)))[0])
                     == 0
                 ):
                     print(
@@ -303,9 +310,7 @@ def make_db(result_dict: dict) -> core.metadata.ManifestDb:
                     == 0
                 ):
                     # If there are no obs in this particular time range, just use the all time average for that array
-                    cur_df = df.where(
-                        (df.freqs == str(freq)) & (df.ufms == str(ufm))
-                    )
+                    cur_df = df.where((df.freqs == str(freq)) & (df.ufms == str(ufm)))
                 else:
                     cur_df = df.where(
                         (df.freqs == str(freq))
@@ -394,3 +399,37 @@ def make_db(result_dict: dict) -> core.metadata.ManifestDb:
     return db
 
 
+def load_amans(
+    f: h5py.File,
+) -> tuple[
+    np.array,
+    np.array,
+]:
+    obs_ids = []
+    times = []
+    stream_ids = []
+    bands = []
+    for o in f:
+        for s in f[o]:
+            for b in f[o][s]:
+                obs_ids += [o]
+                times += [float(o.split("_")[1])]
+                stream_ids += [s]
+                bands += [b]
+    limit_bands = ["f030", "f040", "f090", "f150", "f220", "f280"]
+    msk = np.isin(bands, limit_bands)
+    obs_ids = np.array(obs_ids)[msk]
+    times = np.array(times)[msk]
+    stream_ids = np.array(stream_ids)[msk]
+    bands = np.array(bands)[msk]
+
+    amans = []
+    for o, s, b in zip(obs_ids, stream_ids, bands):
+        try:
+            amans.append(core.AxisManager.load(f[os.path.join(o, s, b, "")]))
+        except KeyError:
+            continue
+
+    amans = np.array(amans)
+
+    return amans, obs_ids, stream_ids, bands

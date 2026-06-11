@@ -6,7 +6,6 @@ from zoneinfo import ZoneInfo
 import dill as pk
 import h5py
 import numpy as np
-import pandas as pd
 from astropy import units as u
 from sotodlib import core
 from sotodlib.core.metadata.loader import LoaderError
@@ -42,7 +41,7 @@ def _make_parser() -> ap.ArgumentParser:
 if __name__ == "__main__":
     parser = _make_parser()
     args = parser.parse_args()
-    #TODO: set lacom path
+    # TODO: set lacom path
     with open("../data/atmosphere_eff.pk", "rb") as f:
         atmosphere_eff = pk.load(f)
 
@@ -59,32 +58,7 @@ if __name__ == "__main__":
     # ASO path
     data_dir = args.datadir
     f = h5py.File(data_dir + "beam_pars.h5", mode="r")
-    obs_ids = []
-    times = []
-    stream_ids = []
-    bands = []
-    for o in f:
-        for s in f[o]:
-            for b in f[o][s]:
-                obs_ids += [o]
-                times += [float(o.split("_")[1])]
-                stream_ids += [s]
-                bands += [b]
-    limit_bands = ["f030", "f040", "f090", "f150", "f220", "f280"]
-    msk = np.isin(bands, limit_bands)
-    obs_ids = np.array(obs_ids)[msk]
-    times = np.array(times)[msk]
-    stream_ids = np.array(stream_ids)[msk]
-    bands = np.array(bands)[msk]
-
-    amans = []
-    for o, s, b in zip(obs_ids, stream_ids, bands):
-        try:
-            amans.append(core.AxisManager.load(f[os.path.join(o, s, b, "")]))
-        except KeyError:
-            continue
-
-    amans = np.array(amans)
+    amans, obs_ids, stream_ids, bands = au.load_amans(f)
 
     cal_dict = {}
 
@@ -92,16 +66,15 @@ if __name__ == "__main__":
         "/global/cfs/cdirs/sobs/metadata/lat/contexts/smurf_detsets_local.yaml"
     )
 
-
     for i, aman in enumerate(amans):
         obs_id = obs_ids[i].split("_")[1]
         ufm = stream_ids[i].split("_")[1]
         band = bands[i][1:]
         ufm_type, ufm_band = keys_from_wafer(ufm, band)
 
+        # Get beam pars
         fitted_fwhm = aman.data_fwhm.to(u.arcmin).value
         data_solid_angle = aman.data_solid_angle_corr.value
-
         if "amp_outer" in aman:
             amp = aman.amp.value + aman.amp_outer.value
         else:
@@ -157,11 +130,6 @@ if __name__ == "__main__":
             continue
 
         # Get pwv/el adjustment
-        start_date = dt.datetime.fromtimestamp(int(obs_id), dt.UTC) - dt.timedelta(
-            days=1
-        )
-        end_date = dt.datetime.fromtimestamp(int(obs_id), dt.UTC) + dt.timedelta(days=1)
-
         pwv_idx = np.where(
             np.array(
                 [np.abs(pwv - fiducial_pwv) < 0.1 for pwv in atmosphere_eff["pwv"]]
@@ -175,16 +143,16 @@ if __name__ == "__main__":
             continue
         if np.isnan(pwv_obs):
             continue
-        if pwv_obs > 2.5:
+        if pwv_obs > 3.0:
             continue
 
+        # now load the metadata after cuts
         meta = ctx.get_meta(obs_ids[i])
-
         el_obs = meta.obs_info.el_center
-
         if el_obs > 90:
             el_obs = 180 - el_obs
 
+        # Convert from actual observed el to the nominal el of observation used in the effective atmosphere dict
         obs_idx_pwv = np.where(
             np.isclose(
                 np.abs(atmosphere_eff["pwv"] - pwv_obs),
@@ -196,11 +164,13 @@ if __name__ == "__main__":
                 el
                 for el in atmosphere_eff["LF"]["LF_1"]
                 if np.abs(int(el) - el_obs) < 2.5
-            ][0] 
-        except:
+            ][0]
+
+        except IndexError:
             print(f"El {el_obs} for obs {obs_ids[i]} out of range")
             continue
 
+        # Adjust the amplitude for the pwv
         t_atm_obs = atmosphere_eff[ufm_type][ufm_band][obs_key_el][obs_idx_pwv]
         t_atm_fiducial = atmosphere_eff[ufm_type][ufm_band][el_key][pwv_idx]
         pwv_adjust = t_atm_fiducial / t_atm_obs
@@ -242,19 +212,20 @@ if __name__ == "__main__":
             "time": obs_id,
         }
 
-
     if save_results:
         today = dt.datetime.now(tz=ZoneInfo("America/New_York")).date()
         date_str = str(today.month).zfill(2) + str(today.day).zfill(2) + str(today.year)
 
-        result_dict = au.make_results_dict(cal_dict=cal_dict,)
+        result_dict = au.make_results_dict(
+            cal_dict=cal_dict,
+        )
 
-        with open(f"results_{date_str}.pk", "wb") as f:
+        with open(f"../results_{date_str}.pk", "wb") as f:
             pk.dump(result_dict, f)
 
-        with open(f"abscals_{date_str}.pk", "wb") as f:
+        with open(f"../abscals_{date_str}.pk", "wb") as f:
             pk.dump(cal_dict, f)
 
         # Now to write the manifest db
         db = au.make_db(result_dict=result_dict)
-        db.to_file(f"db_{date_str}.sqlite")
+        db.to_file(f"../db_{date_str}.sqlite")

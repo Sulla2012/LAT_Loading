@@ -1,7 +1,5 @@
-import datetime as dt
 from functools import cache
-from os import listdir
-from os.path import isfile, join
+from os.path import join
 
 import h5py
 import numpy as np
@@ -14,21 +12,46 @@ from sotodlib import core
 from sotodlib.io import hkdb
 from sotodlib.io.ancil.pwv import apex_to_tocolin_250701
 
-
 # Dict mapping OTs to UFMs
 ufm_dict = {
     "c1": ["uv38", "uv39", "uv46"],
     "i1": ["mv21", "mv24", "mv28"],
+    "i2": ["uv54", "uv58", "uv60"],
     "i3": ["mv13", "mv20", "mv34"],
     "i4": ["mv14", "mv32", "mv49"],
     "i5": ["uv31", "uv42", "uv47"],
     "i6": ["mv11", "mv25", "mv26"],
+    "o1": ["uv57", "uv59", "uv62"],
+    "o2": ["mv29", "mv68", "mv73"],
+    "o3": ["mv65", "mv67", "mv75"],
+    "o4": ["mv15r2", "mv64", "mv70"],
+    "o5": ["mv63", "mv76", "mv77"],
+    "o6": ["ln2", "ln3", "ln4"],
 }
 
 
 def ot_from_ufm(ufm: str) -> str:
-    for ot in ufm_dict:
-        if ufm in ufm_dict[ot]:
+    """
+    Convert from ufm to the OT the ufm is in.
+
+    Parameters
+    ----------
+    ufm : str
+        UFM of interest.
+
+    Returns
+    -------
+    ot : str
+        OT the UFM is in
+
+    Raises
+    ------
+    ValueError
+        If no OT is found for the UFM.
+    """
+
+    for ot, ufms in ufm_dict:
+        if ufm in ufms:
             return ot
     raise ValueError(f"Error: no OT found for UFM {ufm}")
 
@@ -132,7 +155,8 @@ def keys_from_wafer(wafer: str, band: str):
 
 
 def pwv_interp(
-    filepath: str = "/global/u2/j/jorlo/dev/LAT_Loading/latcom/utils/apex_pwv_data.npz", time_cut: float = 17410 * 1e5
+    filepath: str = "/global/u2/j/jorlo/dev/LAT_Loading/latcom/utils/apex_pwv_data.npz",
+    time_cut: float = 17410 * 1e5,
 ) -> interpolate.interp1d:
     """
     Interpolates APEX pwv data. Should be replaced by SO radiometer when it becomes available
@@ -151,7 +175,7 @@ def pwv_interp(
     """
     data = {}
     with np.load(filepath, allow_pickle=True) as x:
-        for k in x.keys():
+        for k in x:
             data[k] = x[k]
 
     flags = np.where(data["timestamp"] >= time_cut)[0]
@@ -177,12 +201,12 @@ def bandpass_interp(
         raise ValueError(f"ERROR: band {band} not valid")
 
     x = df["frequency"].to_numpy()
-    if str(ufm + "_f" + band) in df.keys():
+    if str(ufm + "_f" + band) in df:
         y = df[str(ufm + "_f" + band)].to_numpy()
 
     else:
         ys = []
-        for key in df.keys():
+        for key in df:
             if str(band) in key:
                 ys.append(df[key])
         ys = np.array(ys)
@@ -225,12 +249,12 @@ def get_bandwidth(band: str, ufm: str, path: str = "./bands") -> float:
         raise ValueError(f"ERROR: band {band} not valid")
 
     x = np.linspace(20, 375, 10000)
-    if str(ufm + "_f" + band) in df.keys():
+    if str(ufm + "_f" + band) in df:
         band = bandpass_interp(band=band, ufm=ufm, path=path)
         bandwidth = np.trapz(band(x), x)
 
     else:
-        arrays = [key.split("_")[0] for key in df.keys() if key != "frequency"]
+        arrays = [key.split("_")[0] for key in df if key != "frequency"]
         passes = np.zeros(len(arrays))
         for i, array in enumerate(arrays):
             bandpass = bandpass_interp(band, array, path=path)
@@ -399,9 +423,8 @@ def get_dark_rset(stream_id: str, ot: str) -> dm.ResSet:
     data = get_dark_cal(stream_id, ot)
 
     north_is_highband = dm.get_north_is_highband(data["band"], data["bg"])
-    idx = 0
     resonances = []
-    for x in data:
+    for idx, x in enumerate(data):
         is_north = north_is_highband ^ (x["band"] < 4)
         res = dm.Resonator(
             idx=idx,
@@ -414,41 +437,10 @@ def get_dark_rset(stream_id: str, ot: str) -> dm.ResSet:
         )
         if res.res_freq >= 6000:
             res.res_freq -= 2000
-        idx += 1
         resonances.append(res)
     rset = dm.ResSet(resonances)
     rset.name = f"{stream_id} pton"
     return rset
-
-
-def find_smurf_tune_file(tune_name: str, ot: str, ufm_name: str) -> str:
-    # Get the Tunefile for this obs. Yes this is a dumb brute force check for the file.
-    try:
-        # Try Level3 data first
-        tune_file = None
-        tune_num = tune_name[:5]
-        tune_setup_filepath = f"/so/data/lat/smurf/smurf_{tune_num}_lat/{ufm_name}"
-        for x in listdir(tune_setup_filepath):
-            if "uxm_setup" in x or "setup_tune" in x:
-                if isfile(join(tune_setup_filepath, x, "outputs", tune_name)):
-                    tune_file = join(tune_setup_filepath, x, "outputs", tune_name)
-                    break
-
-        return tune_file
-
-    # TODO: IDK if this except is valid for LAT
-    except FileNotFoundError:
-        # Try level2 Data if its not in level3
-        tune_file = None
-        tune_num = tune_name[:5]
-        tune_setup_filepath = f"/so/level2-daq/lat/smurf/{tune_num}/{ufm_name}"
-        for x in listdir(tune_setup_filepath):
-            if "uxm_setup" in x or "setup_tune" in x:
-                if isfile(join(tune_setup_filepath, x, "outputs", tune_name)):
-                    tune_file = join(tune_setup_filepath, x, "outputs", tune_name)
-                    break
-
-        return tune_file
 
 
 def get_obs_from_obs_ids(
@@ -462,19 +454,5 @@ def get_obs_from_obs_ids(
             f"(obs_id=='{obs_id}') and (type=='oper') and (subtype=='iv') and tube_slot == '{ot}'"
         )
         obs_list.append(obs[0])
-
-    return obs_list
-
-
-def get_obs_from_time(
-    ot: str,
-    start: dt.datetime = dt.datetime(2025, 2, 20),
-    end: dt.datetime = dt.datetime.now(),
-) -> core.metadata.resultset.ResultSet:
-
-    ctx = core.Context("/so/metadata/lat/contexts/smurf_detcal.yaml")
-    obs_list = ctx.obsdb.query(
-        f"{end.timestamp()} > timestamp and timestamp > {start.timestamp()} and type=='oper' and subtype=='iv'  and tube_slot == '{ot}'"
-    )  # IDK why but you have to use format
 
     return obs_list

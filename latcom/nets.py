@@ -4,87 +4,42 @@ import glob
 import dill as pk
 import numpy as np
 from sotodlib import core
+from sotodlib.core.metadata.loader import LoaderError
 from sotodlib.tod_ops.flags import get_det_bias_flags
-from utils.optical_loading import pwv_interp
 
-results = sorted(glob.glob("results_*.pk"))[-1]
+import latcom.utils.net_utils as nu
+from latcom.utils.optical_loading import pwv_interp
+
+results = sorted(glob.glob("../results_*.pk"))[-1]
+abscals = sorted(glob.glob("../abscals_*.pk"))[-1]
 
 with open(results, "rb") as f:
     result_dict = pk.load(f)
 
-with open("abscals.pk", "rb") as f:
+with open(abscals, "rb") as f:
     abscal_dict = pk.load(f)
 
 try:
-    with open("nets.pk", "rb") as f:
+    nets = sorted(glob.glob("../nets_*.pk"))[-1]
+    with open(nets, "rb") as f:
         net_dict = pk.load(f)
 
-except:
-    net_dict = {}
+except (OSError, FileNotFoundError, IndexError):
+    net_dict = nu.gen_empty_net_dict(abscal_dict)
 
-    for key in abscal_dict.keys():
-        ufm = key.split("_")[0]
-        freq = key.split("_")[1]
-        if ufm in abscal_dict.keys():
-            continue
-        if "090" in freq or "150" in freq:
-            net_dict[ufm] = {
-                "090": {
-                    "obs": [],
-                    "ndets": [],
-                    "nets": [],
-                    "raw_cal": [],
-                    "el": [],
-                    "pwv": [],
-                    "neps": [],
-                    "phiconv": [],
-                },
-                "150": {
-                    "obs": [],
-                    "ndets": [],
-                    "nets": [],
-                    "raw_cal": [],
-                    "el": [],
-                    "pwv": [],
-                    "neps": [],
-                    "phiconv": [],
-                },
-            }
-        else:
-            net_dict[ufm] = {
-                "220": {
-                    "obs": [],
-                    "ndets": [],
-                    "nets": [],
-                    "raw_cal": [],
-                    "el": [],
-                    "pwv": [],
-                    "neps": [],
-                    "phiconv": [],
-                },
-                "280": {
-                    "obs": [],
-                    "ndets": [],
-                    "nets": [],
-                    "raw_cal": [],
-                    "el": [],
-                    "pwv": [],
-                    "neps": [],
-                    "phiconv": [],
-                },
-            }
+# ctx = core.Context("../smurf_det_preproc.yaml")
 
-ctx = core.Context("./smurf_det_preproc.yaml")
+ctx = core.Context("../smurf_det_preproc.yaml")
 
-start = dt.datetime(2025, 4, 17, tzinfo=dt.timezone.utc)
-end = dt.datetime(2025, 12, 21, tzinfo=dt.timezone.utc)
+start = dt.datetime(2025, 9, 17, tzinfo=dt.timezone.utc)
+end = dt.datetime(2026, 12, 21, tzinfo=dt.timezone.utc)
 obs_list = ctx.obsdb.query(
     f"{end.timestamp()} > timestamp and timestamp > {start.timestamp()} and type=='obs' and subtype=='cmb'"
 )
 
 pwv = pwv_interp()
 
-if "index" in net_dict.keys():
+if "index" in net_dict:
     start_index = net_dict["index"]
 else:
     start_index = 0
@@ -102,7 +57,7 @@ for i in range(start_index, len(obs_list)):
 
     try:  # Much faster than ctx.get_meta
         det_info = ctx.get_det_info(cur_obs["obs_id"])
-    except:
+    except LoaderError:
         print("No meta data for obs {}".format(cur_obs["obs_id"]))
         continue
     wafers = np.unique(det_info["stream_id"])
@@ -125,7 +80,7 @@ for i in range(start_index, len(obs_list)):
             print("Already done")
             continue
 
-        if cur_wafer not in result_dict.keys():
+        if cur_wafer not in result_dict:
             print(f"No abscal for ufm {cur_wafer}")
             continue
 
@@ -149,7 +104,7 @@ for i in range(start_index, len(obs_list)):
                         "dets:wafer.bandpass": "f" + str(band),
                     },
                 )
-            except:
+            except LoaderError:
                 print("No meta data for obs {}".format(cur_obs["obs_id"]))
                 no_preproc.append(cur_obs["obs_id"])
                 continue
@@ -169,9 +124,9 @@ for i in range(start_index, len(obs_list)):
                 net_flag = wafer_flag * (bp == 1)
 
             raw_cal = np.nanmedian(meta.abscal.raw_abscal_rj[net_flag])
-            if "noise" in meta.preprocess.keys():
+            if "noise" in meta.preprocess:
                 wnoise = meta.preprocess.noise.white_noise[net_flag]
-            elif "noiseT" in meta.preprocess.keys():
+            elif "noiseT" in meta.preprocess:
                 wnoise = meta.preprocess.noiseT.white_noise[net_flag]
             else:
                 print(f"Error: no valid noise ken in {meta.preprocess.keys()}")

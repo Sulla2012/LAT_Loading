@@ -1,5 +1,6 @@
 import datetime as dt
 import os
+from zoneinfo import ZoneInfo
 
 import astropy.constants as const
 import astropy.units as u
@@ -60,12 +61,32 @@ so3gsite = proj.coords.SITES["so"]
 site = so3gsite.ephem_observer()
 
 
-def get_matching_obs(obs_id_list: list, tol: float = 60.0, ignore: list = []):
+def get_matching_obs(
+    obs_id_list: list, tol: float = 60.0, ignore: list = list | None
+) -> np.array:
     """
     Given a list of arrays of obs ids, figure out which are in common across all lists,
     and figure out which obs are the common obs
+
+    Parameters
+    ----------
+    obs_id_list : list
+        List of obs IDs
+    tol : float, default 60
+        Time tolerance, in seconds, for observations to be considered the same
+    ignore : list, default None
+        List of observatons to ignore
+
+    Returns
+    -------
+    array_matched_times : np.array
+        Array which maps obs_list to the reduced matched time list.
     """
     # Make a list of all unique times, up to 60 second
+
+    if ignore is None:
+        ignore = []
+
     all_times = [float(obs_id_list[0][0].split("_")[1])]  # initialize with 1 time
     for i, obs_ids in enumerate(obs_id_list):
         for ob in obs_ids:
@@ -110,7 +131,8 @@ def load_band_file(fname):
 
 
 def load_sim(filename):
-    s = yaml.safe_load(open(filename))
+    with open(filename) as f:
+        s = yaml.safe_load(f)
     if "tags" not in s:
         return s
     tag_substr(s, s["tags"])
@@ -489,7 +511,7 @@ def fit_gauss_pointing(imap, ivar, pixmap, make_plots=True):
 def get_planet_diameter(obs_id, planet):
     """get angular diameter (in ARCSEC) of a planet from obs id"""
     timestamp = int(obs_id)
-    date = dt.datetime.utcfromtimestamp(timestamp)
+    date = dt.datetime.fromtimestamp(timestamp, tz=ZoneInfo("UTC"))
     site.date = ephem.Date(date)
     saturn = getattr(ephem, planet)(site)
     dia = saturn.size

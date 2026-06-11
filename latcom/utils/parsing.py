@@ -52,18 +52,18 @@ def parse_dict(net_dict: dict) -> pd.DataFrame:
         else:
             temp_conv = 1
         for ufm in ufms:
-            for key in net_dict:
+            for key, sub_dict in net_dict:
                 if ufm not in key:
                     continue
-                for sub_key in net_dict[key].keys():
+                for sub_key in sub_dict:
                     if freq not in sub_key:
                         continue
-                    cur_nets = np.array(net_dict[key][sub_key]["nets"])
-                    cur_obs = np.array(net_dict[key][sub_key]["obs"])
-                    cur_ndets = np.array(net_dict[key][sub_key]["ndets"])
-                    cur_abscals = np.array(net_dict[key][sub_key]["raw_cal"])
-                    cur_neis = net_dict[key][sub_key]["neps"]
-                    cur_el = np.array(net_dict[key][sub_key]["el"])
+                    cur_nets = np.array(sub_dict[sub_key]["nets"])
+                    cur_obs = np.array(sub_dict[sub_key]["obs"])
+                    cur_ndets = np.array(sub_dict[sub_key]["ndets"])
+                    cur_abscals = np.array(sub_dict[sub_key]["raw_cal"])
+                    cur_neis = sub_dict[sub_key]["neps"]
+                    cur_el = np.array(sub_dict[sub_key]["el"])
 
                     label = str(freq) + "_" + str(ufm)
                     for j in range(len(cur_nets)):
@@ -91,7 +91,7 @@ def parse_dict(net_dict: dict) -> pd.DataFrame:
                             arrays.append(ufm)
                             array_freqs.append(freq)
                             for nei in cur_neis[j]:
-                                neis.append(nei)
+                                neis.append(nei)  # noqa : PERF402
 
     labels = np.array(labels)
     nets = np.array(nets)
@@ -151,19 +151,19 @@ def parse_neps(net_dict: dict) -> pd.DataFrame:
         freqs
     ):  # This is slighly inefficient but the ezest way to sort by freq then ufm
         for ufm in ufms:
-            for key in net_dict:
+            for key, sub_dict in net_dict:
                 if ufm not in key:
                     continue
-                for sub_key in net_dict[key].keys():
+                for sub_key in sub_dict:
                     if freq not in sub_key:
                         continue
-                    cur_abscals = np.array(net_dict[key][sub_key]["raw_cal"])
-                    cur_nets = np.array(net_dict[key][sub_key]["nets"])
-                    cur_neps = net_dict[key][sub_key]["neps"]
-                    cur_obs = np.array(net_dict[key][sub_key]["obs"])
-                    cur_ndets = np.array(net_dict[key][sub_key]["ndets"])
-                    cur_phicals = net_dict[key][sub_key]["phiconv"]
-                    cur_el = np.array(net_dict[key][sub_key]["el"])
+                    cur_abscals = np.array(sub_dict[sub_key]["raw_cal"])
+                    cur_nets = np.array(sub_dict[sub_key]["nets"])
+                    cur_neps = sub_dict[sub_key]["neps"]
+                    cur_obs = np.array(sub_dict[sub_key]["obs"])
+                    cur_ndets = np.array(sub_dict[sub_key]["ndets"])
+                    cur_phicals = sub_dict[sub_key]["phiconv"]
+                    cur_el = np.array(sub_dict[sub_key]["el"])
                     label = str(freq) + "_" + str(ufm)
                     for j in range(len(cur_abscals)):
                         cur_pwv = pwv(cur_obs[j].split("_")[1])
