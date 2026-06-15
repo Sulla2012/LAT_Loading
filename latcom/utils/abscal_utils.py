@@ -239,7 +239,7 @@ def make_db(result_dict: dict) -> core.metadata.ManifestDb:
             kind="baseline",
         )  # Temperature for rj->cmb
         for ufm in ufms:
-            for key, sub_dict in result_dict:
+            for key, sub_dict in result_dict.items():
                 if ufm not in key:
                     continue
                 for sub_key in sub_dict:
@@ -402,6 +402,8 @@ def make_db(result_dict: dict) -> core.metadata.ManifestDb:
 def load_amans(
     f: h5py.File,
 ) -> tuple[
+    np.array,
+    np.array,
     np.array,
     np.array,
 ]:

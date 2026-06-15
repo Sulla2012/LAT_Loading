@@ -52,7 +52,7 @@ def parse_dict(net_dict: dict) -> pd.DataFrame:
         else:
             temp_conv = 1
         for ufm in ufms:
-            for key, sub_dict in net_dict:
+            for key, sub_dict in net_dict.items():
                 if ufm not in key:
                     continue
                 for sub_key in sub_dict:
@@ -151,7 +151,7 @@ def parse_neps(net_dict: dict) -> pd.DataFrame:
         freqs
     ):  # This is slighly inefficient but the ezest way to sort by freq then ufm
         for ufm in ufms:
-            for key, sub_dict in net_dict:
+            for key, sub_dict in net_dict.items():
                 if ufm not in key:
                     continue
                 for sub_key in sub_dict:

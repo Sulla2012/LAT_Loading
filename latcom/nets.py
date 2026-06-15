@@ -1,5 +1,6 @@
 import datetime as dt
 import glob
+from zoneinfo import ZoneInfo
 
 import dill as pk
 import numpy as np
@@ -25,13 +26,16 @@ try:
         net_dict = pk.load(f)
 
 except (OSError, FileNotFoundError, IndexError):
+    today = dt.datetime.now(tz=ZoneInfo("America/New_York")).date()
+    date_str = str(today.month).zfill(2) + str(today.day).zfill(2) + str(today.year)
+    nets = f"../nets_{date_str}.pk"
     net_dict = nu.gen_empty_net_dict(abscal_dict)
 
 # ctx = core.Context("../smurf_det_preproc.yaml")
 
 ctx = core.Context("../smurf_det_preproc.yaml")
 
-start = dt.datetime(2025, 9, 17, tzinfo=dt.timezone.utc)
+start = dt.datetime(2026, 4, 1, tzinfo=dt.timezone.utc)
 end = dt.datetime(2026, 12, 21, tzinfo=dt.timezone.utc)
 obs_list = ctx.obsdb.query(
     f"{end.timestamp()} > timestamp and timestamp > {start.timestamp()} and type=='obs' and subtype=='cmb'"
@@ -52,7 +56,7 @@ for i in range(start_index, len(obs_list)):
     if i % 100 == 0:
         net_dict["index"] = i
         print("Index: ", net_dict["index"])
-        with open("nets.pk", "wb") as f:
+        with open(nets, "wb") as f:
             pk.dump(net_dict, f)
 
     try:  # Much faster than ctx.get_meta
@@ -155,7 +159,7 @@ for i in range(start_index, len(obs_list)):
 
 print("Final Dump")
 
-with open("nets.pk", "wb") as f:
+with open(nets, "wb") as f:
     pk.dump(net_dict, f)
 
 with open("no_preproc.txt", "w") as f:
