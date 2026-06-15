@@ -102,10 +102,10 @@ def gen_empty_net_dict(abscal_dict: dict) -> dict:
 
 
 def get_nets(
-    obs: OrderedDict,
+    obs_id: str,
     abscal_list: list,
     pwv: interpolate.interp1d,
-    ctx: core.context.Context,
+    ctx_path: str,
 ) -> tuple[list, list, list, list, list, list, list, list, list, list] | None:
     """
     Function which computes the NET as well as NEP and some other parameters
@@ -114,14 +114,14 @@ def get_nets(
 
     Parameters
     ----------
-    obs : OrderedDict
-        Observation dict as returned by ctx.obsdb.query
+    obs_id : str
+        Obs id of the observation
     abscal_list : list
         List of array/band combinations we have abscals for.
     pwv : interpolate-interp1d
         Interpolation function for pwv.
-    ctx : core.context.Context
-        Context object for loading metadata
+    ctx : str
+        Path to context object for loading metadata
 
     Returns
     -------
@@ -159,10 +159,12 @@ def get_nets(
     els = []
     neps = []
     phiconvs = []
+
+    ctx = core.Context(ctx_path)
     try:  # Much faster than ctx.get_meta
-        det_info = ctx.get_det_info(obs["obs_id"])
+        det_info = ctx.get_det_info(obs_id)
     except LoaderError:
-        print("No meta data for obs {}".format(obs["obs_id"]))
+        print("No meta data for obs {}".format(obs_id))
         return None
     wafers = np.unique(det_info["stream_id"])
     bands = np.unique(det_info["wafer.bandpass"])
@@ -189,14 +191,14 @@ def get_nets(
 
             try:
                 meta = ctx.get_meta(
-                    obs["obs_id"],
+                    obs_id,
                     dets={
                         "dets:stream_id": "ufm_" + str(cur_wafer),
                         "dets:wafer.bandpass": "f" + str(band),
                     },
                 )
             except LoaderError:
-                print("No meta data for obs {}".format(obs["obs_id"]))
+                print("No meta data for obs {}".format(obs_id))
                 continue
 
             flags = get_det_bias_flags(meta).det_bias_flags
@@ -204,7 +206,7 @@ def get_nets(
             wafer_flag = np.array([cur_wafer in ufm for ufm in meta.det_info.stream_id])
 
             if len(wafer_flag) == 0:
-                print("No det_info for obs {}".format(obs["obs_id"]))
+                print("No det_info for obs {}".format(obs_id))
                 continue
 
             bp = (meta.det_cal.bg % 4) // 2
@@ -236,7 +238,7 @@ def get_nets(
             bands.append(band)
 
             raw_cals.append(raw_cal)
-            obs_ids.append(obs["obs_id"])
+            obs_ids.append(obs_id)
             ndets.append(ndet)
             array_nets.append(array_net)
             pwvs.append(pwv(obs["timestamp"]))
