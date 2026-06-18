@@ -46,7 +46,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     result_path = sorted(glob.glob("../results_*.pk"))[-1]
-    abscal_path = sorted(glob.glob("../abscals_*.pk"))[-1]
 
     with open(result_path, "rb") as f:
         result_dict = pk.load(f)
@@ -72,7 +71,7 @@ if __name__ == "__main__":
         )
         results = pool.map(driver_func, list(obs_ids))
 
-    net_dict = nu.parse_net_results(results, abscal_path)
+    net_dict = nu.parse_net_results(results)
 
     today = dt.datetime.now(tz=ZoneInfo("America/New_York")).date()
     date_str = str(today.month).zfill(2) + str(today.day).zfill(2) + str(today.year)

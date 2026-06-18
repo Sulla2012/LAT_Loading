@@ -65,7 +65,7 @@ if __name__ == "__main__":
             ctx_path=args.ctx_path,
         )
         results = pool.map(driver_func, list(obs_ids))
-    nep_dict = nu.parse_nep_results(results, abscal_path)
+    nep_dict = nu.parse_nep_results(results)
 
     today = dt.datetime.now(tz=ZoneInfo("America/New_York")).date()
     date_str = str(today.month).zfill(2) + str(today.day).zfill(2) + str(today.year)
