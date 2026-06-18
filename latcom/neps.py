@@ -1,6 +1,5 @@
 import argparse as ap
 import datetime as dt
-import glob
 import multiprocessing
 from functools import partial
 from zoneinfo import ZoneInfo
@@ -9,7 +8,12 @@ import dill as pk
 from sotodlib import core
 
 import latcom.utils.net_utils as nu
-from latcom.utils.optical_loading import pwv_interp
+from latcom.utils.optical_loading import (
+    aso_tubes,
+    lf_tubes,
+    pwv_interp,
+    so_nominal_tubes,
+)
 
 
 def _make_parser() -> ap.ArgumentParser:
@@ -19,7 +23,7 @@ def _make_parser() -> ap.ArgumentParser:
     parser.add_argument(
         "--ctx_path",
         "-c",
-        default="../smurf_det_preproc.yaml",
+        default="../ctxs/",
         help="Path to context file. ",
     )
 
@@ -44,9 +48,8 @@ def _make_parser() -> ap.ArgumentParser:
 if __name__ == "__main__":
     parser = _make_parser()
     args = parser.parse_args()
-    abscal_path = sorted(glob.glob("../abscals_*.pk"))[-1]
 
-    ctx = core.Context(args.ctx_path)
+    ctx = core.Context(args.ctx_path + "smurf_det_preproc.yaml")
 
     obs_list = ctx.obsdb.query(
         f"{args.end.timestamp()} > timestamp and timestamp > {args.start.timestamp()} and type=='obs' and subtype=='cmb'"
@@ -54,17 +57,23 @@ if __name__ == "__main__":
 
     pwv = pwv_interp()
 
-    obs_ids = []
+    obs_ctx_list = []
     for i, obs in enumerate(obs_list):
-        obs_ids.append(str(obs["obs_id"]))
+        ot = str(obs["obs_id"]).split("_")[2][3:]
+        obs_id = str(obs["obs_id"])
+        if ot in so_nominal_tubes:
+            obs_ctx_list.append((obs_id, args.ctx_path + "/preprocess_nominal.yaml"))
+        elif ot in aso_tubes:
+            obs_ctx_list.append((obs_id, args.ctx_path + "/preprocess.yaml"))
+        elif ot in lf_tubes:
+            obs_ctx_list.append((obs_id, args.ctx_path + "/preprocess_lf.yaml"))
 
     with multiprocessing.Pool() as pool:
         driver_func = partial(
             nu.get_neps,
             pwv=pwv,
-            ctx_path=args.ctx_path,
         )
-        results = pool.map(driver_func, list(obs_ids))
+        results = pool.map(driver_func, obs_ctx_list)
     nep_dict = nu.parse_nep_results(results)
 
     today = dt.datetime.now(tz=ZoneInfo("America/New_York")).date()

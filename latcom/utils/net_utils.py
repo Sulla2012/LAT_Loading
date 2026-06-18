@@ -167,10 +167,9 @@ def gen_empty_nep_dict() -> dict:
 
 
 def get_nets(
-    obs_id: str,
+    obs_ctx: tuple[str, str],
     abscal_list: list,
     pwv: interpolate.interp1d,
-    ctx_path: str,
 ) -> tuple[list, list, list, list, list, list, list, list, list, list] | None:
     """
     Function which computes the NET as well as NEP and some other parameters
@@ -179,14 +178,12 @@ def get_nets(
 
     Parameters
     ----------
-    obs_id : str
-        Obs id of the observation
+    obs_ctx : tuple(str, str)
+        Tuple of Obs id, ctx_path of the observation
     abscal_list : list
         List of array/band combinations we have abscals for.
     pwv : interpolate-interp1d
         Interpolation function for pwv.
-    ctx : str
-        Path to context object for loading metadata
 
     Returns
     -------
@@ -212,7 +209,7 @@ def get_nets(
         Phi to pW conversions corresponding to each return entry
 
     """
-
+    obs_id, ctx_path = obs_ctx
     arrays = []
     ret_bands = []
 
@@ -326,9 +323,8 @@ def get_nets(
 
 
 def get_neps(
-    obs_id: str,
+    obs_ctx: tuple[str, str],
     pwv: interpolate.interp1d,
-    ctx_path: str,
 ) -> tuple[list, list, list, list, list, list, list, list] | None:
     """
     Function which computes just the NEPs and some other parameters
@@ -340,12 +336,11 @@ def get_neps(
 
     Parameters
     ----------
-    obs_id : str
-        Obs id of the observation
+    obs_ctx : tuple(str, str)
+        Tuple of Obs id, ctx_path of the observation
     pwv : interpolate-interp1d
         Interpolation function for pwv.
-    ctx : str
-        Path to context object for loading metadata
+
 
     Returns
     -------
@@ -367,6 +362,7 @@ def get_neps(
         Phi to pW conversions corresponding to each return entry
 
     """
+    obs_id, ctx_path = obs_ctx
 
     arrays = []
     ret_bands = []
@@ -380,7 +376,11 @@ def get_neps(
 
     ctx = core.Context(ctx_path)
     try:  # Much faster than ctx.get_meta
-        det_info = ctx.get_det_info(obs_id)
+        if "lf" in ctx_path:
+            return None
+            # det_info = ctx.get_det_info(obs_id, dets={'wafer.wafer_slot': 'ws0'}) #TODO: need per-wafer logic for LF
+        else:
+            det_info = ctx.get_det_info(obs_id)
     except LoaderError:
         print(f"No meta data for obs {obs_id}")
         return None
