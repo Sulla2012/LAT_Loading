@@ -40,7 +40,7 @@ metadata:
     name: 'abscal'
     unpack:
     - abscal
-  - db: '{manifestdir}/preprocess/lat_preprocess_planet_251103m/process_archive_local.sqlite'
+  - db: '{manifestdir}/preprocess/lat_preprocess_cmb_240409m/process_archive_local.sqlite'
     label: preprocess
     unpack: preprocess
     drop_fields:
