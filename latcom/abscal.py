@@ -33,10 +33,16 @@ def _make_parser() -> ap.ArgumentParser:
     )
 
     parser.add_argument(
-        "--no-results",
+        "--no_results",
         "-nr",
         action="store_true",
         help="Whether to save the abscal results as a pickle file",
+    )
+    parser.add_argument(
+        "--skip_planets",
+        "-sp",
+        default=["saturn"],
+        help="List of planets to skip during abscal calculation.",
     )
     return parser
 
@@ -129,6 +135,8 @@ if __name__ == "__main__":
             planet = "uranus"
         else:
             print(f"Error: no planet in tags: {tags}")
+            continue
+        if planet in args.skip_planets:
             continue
 
         planet_temp = get_planet_temp(planet=planet, obs_id=obs_id, band=band, ufm=ufm)
