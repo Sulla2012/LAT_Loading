@@ -29,6 +29,10 @@ ufm_dict = {
     "o6": ["ln2", "ln3", "ln4"],
 }
 
+so_nominal_tubes = ["c1", "i1", "i3", "i4", "i5", "i6"]
+aso_tubes = ["i2", "o1", "o2", "o3", "o4", "o5"]
+lf_tubes = ["o6"]
+
 
 def ot_from_ufm(ufm: str) -> str:
     """
