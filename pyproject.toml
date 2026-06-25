@@ -27,6 +27,9 @@ dependencies = [
     "ruff",
 ]
 
+[too.ruff]
+exclue=["*.ipynb"]
+
 [tool.ruff.lint]
 preview = true
 extend-select = ["I", "DOC501"]
