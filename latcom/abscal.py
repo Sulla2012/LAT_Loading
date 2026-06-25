@@ -128,7 +128,7 @@ if __name__ == "__main__":
         elif "uranus" in tags:
             planet = "uranus"
         else:
-            print(f"Error: no planet in tags: {tags[-1]}")
+            print(f"Error: no planet in tags: {tags}")
             continue
 
         planet_temp = get_planet_temp(planet=planet, obs_id=obs_id, band=band, ufm=ufm)

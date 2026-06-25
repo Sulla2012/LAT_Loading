@@ -277,18 +277,21 @@ def make_db(result_dict: dict) -> core.metadata.ManifestDb:
             "obs": obs,
         }
     )
-
+    lfs = ["030", "040"]
+    mfs = ["090", "150"]
+    ufs = ["220", "280"]
     for key in lat_times:
         data = []
 
         # For each period, we're going to compute the average abscal for each ufm and freq
-        mfs = ["090", "150"]
-        ufs = ["220", "280"]
+
         for ufm in ufms:
             for freq in freqs:
-                if freq in mfs and "uv" in ufm:
+                if freq in lfs and "ln" not in ufm:
                     continue
-                if freq in ufs and "mv" in ufm:
+                if freq in mfs and "mv" not in ufm:
+                    continue
+                if freq in ufs and "uv" not in ufm:
                     continue
                 if (
                     len(np.where((df.freqs == str(freq)) & (df.ufms == str(ufm)))[0])
@@ -426,12 +429,14 @@ def load_amans(
     bands = np.array(bands)[msk]
 
     amans = []
-    for o, s, b in zip(obs_ids, stream_ids, bands):
+    flags = np.ones_like(obs_ids, bool)
+    for i, (o, s, b) in enumerate(zip(obs_ids, stream_ids, bands)):
         try:
             amans.append(core.AxisManager.load(f[os.path.join(o, s, b, "")]))
         except KeyError:
+            flags[i] = False
             continue
 
     amans = np.array(amans)
 
-    return amans, obs_ids, stream_ids, bands
+    return amans, obs_ids[flags], stream_ids[flags], bands[flags]
