@@ -350,7 +350,7 @@ def make_db(result_dict: dict) -> core.metadata.ManifestDb:
             ]
         )
         rs.rows = data
-        io_meta.write_dataset(rs, "abscals.h5", f"{key}", overwrite=True)
+        io_meta.write_dataset(rs, "../abscals/abscals.h5", f"{key}", overwrite=True)
 
     # Record in ManifestDb.
     scheme = core.metadata.ManifestScheme()
@@ -414,6 +414,7 @@ def load_amans(
     times = []
     stream_ids = []
     bands = []
+    paths = []
     for o in f:
         for s in f[o]:
             for b in f[o][s]:
@@ -421,18 +422,21 @@ def load_amans(
                 times += [float(o.split("_")[1])]
                 stream_ids += [s]
                 bands += [b]
+                paths += ["full" if "full" in f[o][s][b] else ""]
+
     limit_bands = ["f030", "f040", "f090", "f150", "f220", "f280"]
     msk = np.isin(bands, limit_bands)
     obs_ids = np.array(obs_ids)[msk]
     times = np.array(times)[msk]
     stream_ids = np.array(stream_ids)[msk]
     bands = np.array(bands)[msk]
+    paths = np.array(paths)[msk]
 
     amans = []
     flags = np.ones_like(obs_ids, bool)
-    for i, (o, s, b) in enumerate(zip(obs_ids, stream_ids, bands)):
+    for i, (o, s, b, p) in enumerate(zip(obs_ids, stream_ids, bands, paths)):
         try:
-            amans.append(core.AxisManager.load(f[os.path.join(o, s, b, "")]))
+            amans.append(core.AxisManager.load(f[os.path.join(o, s, b, p)]))
         except KeyError:
             flags[i] = False
             continue

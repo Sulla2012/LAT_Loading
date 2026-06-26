@@ -26,8 +26,8 @@ def _make_parser() -> ap.ArgumentParser:
         "-dd",
         nargs="+",
         default=[
-            "/global/cfs/cdirs/sobs/users/skh/data/beams/lat/pointing_model_atm_relcal/",
-            "/global/cfs/cdirs/sobs/users/skh/data/beams/lat/pointing_model_template_bs_relcal/",
+            "/global/cfs/cdirs/sobs/users/skh/data/beams/lat/pointing_model_atm_relcal/", # Nominal SO
+            "/global/cfs/cdirs/sobs/users/skh/data/beams/lat/pointing_model_bs_relcal/", # ASO
         ],
         help="Path to h5 file containing beam fits",
     )
@@ -41,7 +41,7 @@ def _make_parser() -> ap.ArgumentParser:
     parser.add_argument(
         "--skip_planets",
         "-sp",
-        default=["saturn"],
+        default=[],
         help="List of planets to skip during abscal calculation.",
     )
     return parser

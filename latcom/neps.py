@@ -78,7 +78,7 @@ if __name__ == "__main__":
 
     today = dt.datetime.now(tz=ZoneInfo("America/New_York")).date()
     date_str = str(today.month).zfill(2) + str(today.day).zfill(2) + str(today.year)
-    neps = f"../neps_{date_str}.pk"
+    neps = f"../nets/neps_{date_str}.pk"
 
     with open(neps, "wb") as f:
         pk.dump(nep_dict, f)

@@ -45,8 +45,8 @@ metadata:
     label: focal_plane
     unpack: focal_plane
     on_missing: fail
-  - db: '/global/homes/j/jorlo/dev/LAT_Loading/db.sqlite'
-    name: 'abscal'
+  - db: '{manifestdir}/abscal/lat_abscal_260519/db_local.sqlite'
+    label: abscal
     unpack:
     - abscal
   #Standard Preproc

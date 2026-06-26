@@ -435,7 +435,7 @@ def get_neps(
             elif "noiseT" in meta.preprocess:
                 wnoise = meta.preprocess.noiseT.white_noise[net_flag]
             else:
-                print(f"Error: no valid noise ken in {meta.preprocess.keys()}")
+                print(f"Error: no valid noise key in {meta.preprocess.keys()}")
                 continue
             ndet = len(np.where(wnoise != 0)[0])
 
