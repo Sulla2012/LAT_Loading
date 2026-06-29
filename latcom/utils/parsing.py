@@ -26,7 +26,7 @@ def parse_dict(net_dict: dict) -> pd.DataFrame:
 
     ufms = sorted(net_dict.keys())[1:]  # remove index key
 
-    freqs = ["090", "150", "220", "280"]
+    freqs = ["030", "040", "090", "150", "220", "280"]
 
     units = r"\mu K_{RJ}"
 
