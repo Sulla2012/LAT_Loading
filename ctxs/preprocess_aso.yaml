@@ -40,10 +40,10 @@ metadata:
     label: focal_plane
     unpack: focal_plane
     on_missing: fail
-  # - db: '{manifestdir}/abscal/lat_abscal_260519/db_local.sqlite'
-  #   label: abscal
-  #   unpack:
-  #   - abscal
+  - db: '/global/homes/j/jorlo/dev/LAT_Loading/abscals/db_06262026.sqlite'
+    name: 'abscal'
+    unpack:
+    - abscal
   # - db: '{relcaldir}/lat_relcal_20260129.sqlite'
   #   label: relcal
   #   unpack:
