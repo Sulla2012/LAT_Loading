@@ -70,7 +70,7 @@ if __name__ == "__main__":
         if ot in so_nominal_tubes:
             obs_ctx_list.append((obs_id, args.ctx_path + "/preprocess_nominal.yaml"))
         elif ot in aso_tubes:
-            obs_ctx_list.append((obs_id, args.ctx_path + "/preprocess.yaml"))
+            obs_ctx_list.append((obs_id, args.ctx_path + "/preprocess_aso.yaml"))
         elif ot in lf_tubes:
             obs_ctx_list.append((obs_id, args.ctx_path + "/preprocess_lf.yaml"))
 
