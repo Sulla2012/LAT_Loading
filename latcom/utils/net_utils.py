@@ -411,7 +411,7 @@ def get_neps(
                         "dets:wafer.bandpass": "f" + str(band),
                     },
                 )
-            except LoaderError:
+            except (LoaderError, KeyError):
                 print(f"No meta data for obs {obs_id}")
                 continue
 

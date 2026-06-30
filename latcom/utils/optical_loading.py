@@ -106,23 +106,22 @@ UXM_dict = {
 
 # Dict mapping OTs to house keeping channels for level 2 hk data base.
 # Eepreciated in favor of level 3 hk data base.
-_therm_dict = {
-    "c1": "lat.cryo-ls372-lsa22vr.feeds.temperatures.Channel_03_T",
-    "i1": "lat.cryo-ls372-lsa22vr.feeds.temperatures.Channel_15_T",
-    "i3": "lat.cryo-ls372-lsa22vr.feeds.temperatures.Channel_09_T",
-    "i4": "lat.cryo-ls372-lsa22vr.feeds.temperatures.Channel_11_T",
-    "i5": "lat.cryo-ls372-lsa22vr.feeds.temperatures.Channel_01_T",
-    "i6": "lat.cryo-ls372-lsa22vr.feeds.temperatures.Channel_14_T",
-}
 
 # Dict mapping OTs to housekeeping channels for level 3 hk database.
 therm_dict = {
-    "c1": "cryo-ls372-lsa22vr.temperatures.Channel_03_T",
-    "i1": "cryo-ls372-lsa22vr.temperatures.Channel_15_T",
-    "i3": "cryo-ls372-lsa22vr.temperatures.Channel_09_T",
-    "i4": "cryo-ls372-lsa22vr.temperatures.Channel_11_T",
-    "i5": "cryo-ls372-lsa22vr.temperatures.Channel_01_T",
-    "i6": "cryo-ls372-lsa22vr.temperatures.Channel_14_T",
+    "c1": "cryo-tauhk-1.tauhk_data_full.RTD_OT4_100mK_1_temperature",
+    "i1": "cryo-tauhk-1.tauhk_data_full.RTD_OT1_100mK_1_temperature",
+    "i2": "cryo-tauhk-1.tauhk_data_full.RTD_OT2_100mK_1_temperature",
+    "i3": "cryo-tauhk-1.tauhk_data_full.RTD_OT13_100mK_1_temperature",
+    "i4": "cryo-tauhk-1.tauhk_data_full.RTD_OT14_100mK_1_temperature",
+    "15": "cryo-tauhk-1.tauhk_data_full.RTD_OT5_100mK_1_temperature",
+    "i6": "cryo-tauhk-1.tauhk_data_full.RTD_OT6_100mK_1_temperature",
+    "o1": "cryo-tauhk-1.tauhk_data_full.RTD_OT11_100mK_1_temperature",
+    "o2": "cryo-tauhk-1.tauhk_data_full.RTD_OT12_100mK_1_temperature",
+    "o3": "cryo-tauhk-1.tauhk_data_full.RTD_OT9_100mK_1_temperature",
+    "o4": "cryo-tauhk-1.tauhk_data_full.RTD_OT10_100mK_1_temperature",
+    "o5": "cryo-tauhk-1.tauhk_data_full.RTD_OT7_100mK_1_temperature",
+    "o6": "cryo-tauhk-1.tauhk_data_full.RTD_OT8_100mK_1_temperature",
 }
 
 
@@ -284,7 +283,7 @@ def get_fpa_temps(obs_list: list[core.axisman.AxisManager]) -> np.array:
        Temperatue for each obs
     """
     fpa_temps = np.zeros((len(obs_list),))
-    cfg = hkdb.HkConfig.from_yaml("/so/home/jorlo/dev/LAT_analysis/hkdb-lat.cfg")
+    cfg = hkdb.HkConfig.from_yaml("../data/hkdb-lat.cfg")
     for o, obs in enumerate(obs_list):
         field = therm_dict[obs["tube_slot"]]
         lspec = hkdb.LoadSpec(
@@ -295,7 +294,9 @@ def get_fpa_temps(obs_list: list[core.axisman.AxisManager]) -> np.array:
         )
         result = hkdb.load_hk(lspec, show_pb=False)
         try:
-            fpa_temps[o] = np.mean(result.data[field][1])
+            # tauHK introduces these weird spikes to >1K, not physical. Cut them
+            flags = np.where(result.data[field][1] < 0.3)[0]
+            fpa_temps[o] = np.mean(result.data[field][1][flags])
         except KeyError:
             fpa_temps[o] = np.nan
     return fpa_temps
@@ -370,7 +371,7 @@ def add_iv_info(meta: core.axisman.AxisManager, ctx: core.Context):
             )
         )[0]
         if len(idx) == 0:
-            print(f"Cannot find ({iv_data['bands'][d]},{iv_data['channels'][d]})")
+            # print(f"Cannot find ({iv_data['bands'][d]},{iv_data['channels'][d]})")
             continue
         idx = idx[0]
         iv.bgmap[idx] = iv_data["bgmap"][d]
