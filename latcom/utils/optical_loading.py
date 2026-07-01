@@ -54,7 +54,7 @@ def ot_from_ufm(ufm: str) -> str:
         If no OT is found for the UFM.
     """
 
-    for ot, ufms in ufm_dict:
+    for ot, ufms in ufm_dict.items():
         if ufm in ufms:
             return ot
     raise ValueError(f"Error: no OT found for UFM {ufm}")
