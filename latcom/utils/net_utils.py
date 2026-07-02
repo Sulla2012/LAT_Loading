@@ -240,12 +240,17 @@ def get_nets(
             continue
 
         for band in bands:
-            if "mv" in cur_wafer:
+            if "ln" in cur_wafer:
+                if band == "030":
+                    ufm_band = 1
+                elif band == "040":
+                    ufm_band = 2
+            elif "mv" in cur_wafer:
                 if band == "090":
                     ufm_band = 1
                 elif band == "150":
                     ufm_band = 2
-            if "uv" in cur_wafer:
+            elif "uv" in cur_wafer:
                 if band == "220":
                     ufm_band = 1
                 elif band == "280":
@@ -288,10 +293,22 @@ def get_nets(
                 continue
             ndet = len(np.where(wnoise != 0)[0])
 
-            net_mes = 1 / np.sqrt(2) * wnoise * raw_cal
+            # Shitty units check
+            try:
+                if 1e-4 < wnoise[wnoise > 0][0] < 1e-3:
+                    net_mes = wnoise
+                    factor = 1e6
+                elif 1e-1 < wnoise[wnoise > 0][0]:
+                    net_mes = 1 / np.sqrt(2) * wnoise * raw_cal
+                    factor = 1
+                else:
+                    net_mes = 1 / np.sqrt(2) * wnoise * raw_cal
+                    factor = 1e6
+            except IndexError:
+                continue
             clean_nets = []
             for net in net_mes:
-                if net * 1e6 > 100:
+                if net * factor > 100:
                     clean_nets.append(net)
             clean_nets = np.array(clean_nets)
             array_net = np.nansum((clean_nets * 1e6) ** (-2)) ** (-1 / 2)
