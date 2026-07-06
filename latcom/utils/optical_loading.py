@@ -1,3 +1,5 @@
+import pickle as pk
+from collections import OrderedDict
 from functools import cache
 from os.path import join
 
@@ -7,7 +9,6 @@ import pandas as pd
 import sotodlib.coords.det_match as dm
 import sotodlib.io.load_book as lb
 from scipy import interpolate
-from so3g.hk import load_range
 from sotodlib import core
 from sotodlib.io import hkdb
 from sotodlib.io.ancil.pwv import apex_to_tocolin_250701
@@ -54,7 +55,7 @@ def ot_from_ufm(ufm: str) -> str:
         If no OT is found for the UFM.
     """
 
-    for ot, ufms in ufm_dict:
+    for ot, ufms in ufm_dict.items():
         if ufm in ufms:
             return ot
     raise ValueError(f"Error: no OT found for UFM {ufm}")
@@ -106,23 +107,22 @@ UXM_dict = {
 
 # Dict mapping OTs to house keeping channels for level 2 hk data base.
 # Eepreciated in favor of level 3 hk data base.
-_therm_dict = {
-    "c1": "lat.cryo-ls372-lsa22vr.feeds.temperatures.Channel_03_T",
-    "i1": "lat.cryo-ls372-lsa22vr.feeds.temperatures.Channel_15_T",
-    "i3": "lat.cryo-ls372-lsa22vr.feeds.temperatures.Channel_09_T",
-    "i4": "lat.cryo-ls372-lsa22vr.feeds.temperatures.Channel_11_T",
-    "i5": "lat.cryo-ls372-lsa22vr.feeds.temperatures.Channel_01_T",
-    "i6": "lat.cryo-ls372-lsa22vr.feeds.temperatures.Channel_14_T",
-}
 
 # Dict mapping OTs to housekeeping channels for level 3 hk database.
 therm_dict = {
-    "c1": "cryo-ls372-lsa22vr.temperatures.Channel_03_T",
-    "i1": "cryo-ls372-lsa22vr.temperatures.Channel_15_T",
-    "i3": "cryo-ls372-lsa22vr.temperatures.Channel_09_T",
-    "i4": "cryo-ls372-lsa22vr.temperatures.Channel_11_T",
-    "i5": "cryo-ls372-lsa22vr.temperatures.Channel_01_T",
-    "i6": "cryo-ls372-lsa22vr.temperatures.Channel_14_T",
+    "c1": "cryo-tauhk-1.tauhk_data_full.RTD_OT4_100mK_1_temperature",
+    "i1": "cryo-tauhk-1.tauhk_data_full.RTD_OT1_100mK_1_temperature",
+    "i2": "cryo-tauhk-1.tauhk_data_full.RTD_OT2_100mK_1_temperature",
+    "i3": "cryo-tauhk-1.tauhk_data_full.RTD_OT13_100mK_1_temperature",
+    "i4": "cryo-tauhk-1.tauhk_data_full.RTD_OT14_100mK_1_temperature",
+    "15": "cryo-tauhk-1.tauhk_data_full.RTD_OT5_100mK_1_temperature",
+    "i6": "cryo-tauhk-1.tauhk_data_full.RTD_OT6_100mK_1_temperature",
+    "o1": "cryo-tauhk-1.tauhk_data_full.RTD_OT11_100mK_1_temperature",
+    "o2": "cryo-tauhk-1.tauhk_data_full.RTD_OT12_100mK_1_temperature",
+    "o3": "cryo-tauhk-1.tauhk_data_full.RTD_OT9_100mK_1_temperature",
+    "o4": "cryo-tauhk-1.tauhk_data_full.RTD_OT10_100mK_1_temperature",
+    "o5": "cryo-tauhk-1.tauhk_data_full.RTD_OT7_100mK_1_temperature",
+    "o6": "cryo-tauhk-1.tauhk_data_full.RTD_OT8_100mK_1_temperature",
 }
 
 
@@ -284,7 +284,7 @@ def get_fpa_temps(obs_list: list[core.axisman.AxisManager]) -> np.array:
        Temperatue for each obs
     """
     fpa_temps = np.zeros((len(obs_list),))
-    cfg = hkdb.HkConfig.from_yaml("/so/home/jorlo/dev/LAT_analysis/hkdb-lat.cfg")
+    cfg = hkdb.HkConfig.from_yaml("../data/hkdb-lat.cfg")
     for o, obs in enumerate(obs_list):
         field = therm_dict[obs["tube_slot"]]
         lspec = hkdb.LoadSpec(
@@ -295,43 +295,12 @@ def get_fpa_temps(obs_list: list[core.axisman.AxisManager]) -> np.array:
         )
         result = hkdb.load_hk(lspec, show_pb=False)
         try:
-            fpa_temps[o] = np.mean(result.data[field][1])
+            # tauHK introduces these weird spikes to >1K, not physical. Cut them
+            flags = np.where(result.data[field][1] < 0.3)[0]
+            fpa_temps[o] = np.mean(result.data[field][1][flags])
         except KeyError:
             fpa_temps[o] = np.nan
     return fpa_temps
-
-
-def _get_fpa_temps(obs_list: list[core.axisman.AxisManager]) -> np.array:
-    """
-    Function that gets UFM temp for obs.
-    Gets the UFM therm for each OT from level 2 housekeeping.
-    Depreciated in favor of level 2 housekeeping.
-    Kept around as sometimes accessing level 2 is necessary.
-
-    Parameters
-    ----------
-    obs_list : list[AxisManager]
-        List of observations to get fpa temps for
-
-    Returns
-    -------
-    fpa_temps : np.array
-        Temperatue for each obs
-    """
-    fpa_temps = np.zeros((len(obs_list),))
-    for o, obs in enumerate(obs_list):
-        field = _therm_dict[obs["tube_slot"]]
-        data = load_range(
-            obs["start_time"],
-            obs["stop_time"],
-            fields=[field],
-            alias=["fpa_temp"],
-            data_dir="/so/level2-daq/lat/hk/",
-        )
-        try:
-            fpa_temps[o] = np.mean(data["fpa_temp"][1])
-        except KeyError:
-            fpa_temps[o] = np.nan
 
 
 def add_iv_info(meta: core.axisman.AxisManager, ctx: core.Context):
@@ -370,7 +339,7 @@ def add_iv_info(meta: core.axisman.AxisManager, ctx: core.Context):
             )
         )[0]
         if len(idx) == 0:
-            print(f"Cannot find ({iv_data['bands'][d]},{iv_data['channels'][d]})")
+            # print(f"Cannot find ({iv_data['bands'][d]},{iv_data['channels'][d]})")
             continue
         idx = idx[0]
         iv.bgmap[idx] = iv_data["bgmap"][d]
@@ -460,3 +429,45 @@ def get_obs_from_obs_ids(
         obs_list.append(obs[0])
 
     return obs_list
+
+
+def get_all_iv_data(obs_list: list[OrderedDict]) -> dict:
+    """
+    Function which gets all iv data from a list of observations,
+    along with PWVs and UFM temps
+
+    Parameters
+    ----------
+    obs_list : list[OrderedDict]
+        A list of observation dictionaries.
+
+    Returns
+    -------
+    dict
+        A dictionary containing the IV data, PWVs, and UFM temps for each observation.
+    """
+    iv_dict = {}
+    pwv = pwv_interp()
+    ctx = core.Context("../ctxs/smurf_detsets_local.yaml")
+
+    for i in range(len(obs_list)):
+        obs = obs_list[i]
+        obs_id = obs["obs_id"]
+        meta = ctx.get_meta(obs)
+
+        try:
+            add_iv_info(meta, ctx)
+            iv_dict[obs_id] = {}
+        except FileNotFoundError:
+            print(meta.obs_info.obs_id)
+            continue
+
+        iv_dict[obs_id]["psats"] = meta.iv["p_sat"]
+        iv_dict[obs_id]["pwvs"] = float(pwv((obs["start_time"] + obs["stop_time"]) / 2))
+        iv_dict[obs_id]["ufm_temps"] = float(get_fpa_temps(obs_list[i : i + 1])[0])
+
+    ufm = obs_list[0]["stream_ids_list"].split("_")[-1]
+    with open(f"../ivs/ivs_{ufm}.pk", "wb") as f:
+        pk.dump(iv_dict, f)
+
+    return iv_dict
