@@ -146,7 +146,6 @@ def parse_neps(net_dict: dict) -> pd.DataFrame:
     pwvs = []
     els = []
     pwv_sinel = []
-    abscals = []
     yields = []
     t_obs = []
 

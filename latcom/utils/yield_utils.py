@@ -36,16 +36,16 @@ def parse_yield(net_dict: dict) -> pd.DataFrame:
         freqs
     ):  # This is slighly inefficient but the ezest way to sort by freq then ufm
         for ufm in ufms:
-            for key in net_dict:
+            for key, sub_dict in net_dict.items():
                 if ufm not in key:
                     continue
-                for sub_key in net_dict[key].keys():
+                for sub_key in sub_dict:
                     if freq not in sub_key:
                         continue
-                    cur_obs = np.array(net_dict[key][sub_key]["obs"])
-                    cur_ndets = np.array(net_dict[key][sub_key]["ndets"])
-                    cur_el = np.array(net_dict[key][sub_key]["el"])
-                    cur_nets = np.array(net_dict[key][sub_key]["nets"])
+                    cur_obs = np.array(sub_dict[sub_key]["obs"])
+                    cur_ndets = np.array(sub_dict[sub_key]["ndets"])
+                    cur_el = np.array(sub_dict[sub_key]["el"])
+                    cur_nets = np.array(sub_dict[sub_key]["nets"])
                     label = str(freq) + "_" + str(ufm)
                     for j in range(len(cur_nets)):
                         cur_pwv = pwv(cur_obs[j].split("_")[1])
@@ -80,19 +80,19 @@ def parse_yield(net_dict: dict) -> pd.DataFrame:
         for time in times:
             ndets = 0
             narrays = 0
-            for key in net_dict:
-                for sub_key in net_dict[key].keys():
+            for key, sub_dict in net_dict.items():
+                for sub_key in sub_dict:
                     if freq not in sub_key:
                         continue
-                    cur_obs = np.array(net_dict[key][sub_key]["obs"])
+                    cur_obs = np.array(sub_dict[sub_key]["obs"])
                     for j in range(len(cur_obs)):
                         if np.isclose(time, float(cur_obs[j].split("_")[1])):
-                            cur_ndets = np.array(net_dict[key][sub_key]["ndets"])
-                            cur_nets = np.array(net_dict[key][sub_key]["nets"])
+                            cur_ndets = np.array(sub_dict[sub_key]["ndets"])
+                            cur_nets = np.array(sub_dict[sub_key]["nets"])
                             # if cur_nets[j] <= 100 and cur_ndets[j] > 100: #very large nets are not real
                             ndets += cur_ndets[j]
                             narrays += 860
-                            cur_el = np.array(net_dict[key][sub_key]["el"][j])
+                            cur_el = np.array(sub_dict[sub_key]["el"][j])
                             cur_pwv = pwv(cur_obs[j].split("_")[1])
             if narrays == 0:
                 continue

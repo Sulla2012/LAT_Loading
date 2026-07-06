@@ -1,0 +1,16 @@
+tags:
+  basedir:  /global/cfs/cdirs/sobs/metadata/lat
+  manifestdir: /global/cfs/cdirs/sobs/metadata/lat/manifests/
+imports:
+  - sotodlib.io.load_book
+  - sotodlib.io.metadata
+
+obsfiledb: '{basedir}/lat_obsfiledb_local.sqlite'
+obsdb: '{basedir}/lat_obsdb_240911m_local.sqlite'
+
+obs_loader_type: 'obs-book'
+
+metadata:
+  - db: '{manifestdir}/smurf_detsets/v0/smurf_detset_info_local.sqlite'
+    name: 'smurf'
+    det_info: true

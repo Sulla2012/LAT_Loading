@@ -1,3 +1,5 @@
+import pickle as pk
+from collections import OrderedDict
 from functools import cache
 from os.path import join
 
@@ -7,7 +9,6 @@ import pandas as pd
 import sotodlib.coords.det_match as dm
 import sotodlib.io.load_book as lb
 from scipy import interpolate
-from so3g.hk import load_range
 from sotodlib import core
 from sotodlib.io import hkdb
 from sotodlib.io.ancil.pwv import apex_to_tocolin_250701
@@ -302,39 +303,6 @@ def get_fpa_temps(obs_list: list[core.axisman.AxisManager]) -> np.array:
     return fpa_temps
 
 
-def _get_fpa_temps(obs_list: list[core.axisman.AxisManager]) -> np.array:
-    """
-    Function that gets UFM temp for obs.
-    Gets the UFM therm for each OT from level 2 housekeeping.
-    Depreciated in favor of level 2 housekeeping.
-    Kept around as sometimes accessing level 2 is necessary.
-
-    Parameters
-    ----------
-    obs_list : list[AxisManager]
-        List of observations to get fpa temps for
-
-    Returns
-    -------
-    fpa_temps : np.array
-        Temperatue for each obs
-    """
-    fpa_temps = np.zeros((len(obs_list),))
-    for o, obs in enumerate(obs_list):
-        field = _therm_dict[obs["tube_slot"]]
-        data = load_range(
-            obs["start_time"],
-            obs["stop_time"],
-            fields=[field],
-            alias=["fpa_temp"],
-            data_dir="/so/level2-daq/lat/hk/",
-        )
-        try:
-            fpa_temps[o] = np.mean(data["fpa_temp"][1])
-        except KeyError:
-            fpa_temps[o] = np.nan
-
-
 def add_iv_info(meta: core.axisman.AxisManager, ctx: core.Context):
     """
     Function which adds iv data to a meta data AM.
@@ -461,3 +429,45 @@ def get_obs_from_obs_ids(
         obs_list.append(obs[0])
 
     return obs_list
+
+
+def get_all_iv_data(obs_list: list[OrderedDict]) -> dict:
+    """
+    Function which gets all iv data from a list of observations,
+    along with PWVs and UFM temps
+
+    Parameters
+    ----------
+    obs_list : list[OrderedDict]
+        A list of observation dictionaries.
+
+    Returns
+    -------
+    dict
+        A dictionary containing the IV data, PWVs, and UFM temps for each observation.
+    """
+    iv_dict = {}
+    pwv = pwv_interp()
+    ctx = core.Context("../ctxs/smurf_detsets_local.yaml")
+
+    for i in range(len(obs_list)):
+        obs = obs_list[i]
+        obs_id = obs["obs_id"]
+        meta = ctx.get_meta(obs)
+
+        try:
+            add_iv_info(meta, ctx)
+            iv_dict[obs_id] = {}
+        except FileNotFoundError:
+            print(meta.obs_info.obs_id)
+            continue
+
+        iv_dict[obs_id]["psats"] = meta.iv["p_sat"]
+        iv_dict[obs_id]["pwvs"] = float(pwv((obs["start_time"] + obs["stop_time"]) / 2))
+        iv_dict[obs_id]["ufm_temps"] = float(get_fpa_temps(obs_list[i : i + 1])[0])
+
+    ufm = obs_list[0]["stream_ids_list"].split("_")[-1]
+    with open(f"../ivs/ivs_{ufm}.pk", "wb") as f:
+        pk.dump(iv_dict, f)
+
+    return iv_dict
