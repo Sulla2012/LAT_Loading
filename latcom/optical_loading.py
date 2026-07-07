@@ -17,7 +17,7 @@ def _make_parser() -> ap.ArgumentParser:
         "--start",
         "-s",
         type=lambda d: dt.datetime.strptime(d, "%Y-%m-%d").astimezone(dt.timezone.utc),
-        default="2026-05-01",
+        default="2026-06-01",
         help="Start time for obs",
     )
 

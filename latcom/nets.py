@@ -10,10 +10,8 @@ from sotodlib import core
 
 import latcom.utils.net_utils as nu
 from latcom.utils.optical_loading import (
-    aso_tubes,
     lf_tubes,
     pwv_interp,
-    so_nominal_tubes,
 )
 
 
@@ -65,14 +63,12 @@ if __name__ == "__main__":
 
     obs_ctx_list = []
     for i, obs in enumerate(obs_list):
-        ot = str(obs["obs_id"]).split("_")[2][3:]
+        cur_ot = str(obs["obs_id"]).split("_")[2][3:]
         obs_id = str(obs["obs_id"])
-        if ot in so_nominal_tubes:
-            obs_ctx_list.append((obs_id, args.ctx_path + "/preprocess_nominal.yaml"))
-        elif ot in aso_tubes:
-            obs_ctx_list.append((obs_id, args.ctx_path + "/preprocess_aso.yaml"))
-        elif ot in lf_tubes:
-            obs_ctx_list.append((obs_id, args.ctx_path + "/preprocess_lf.yaml"))
+        if cur_ot in lf_tubes:
+            obs_ctx_list.append((obs_id, "../ctxs/preprocess_lf_260604.yaml"))
+        else:
+            obs_ctx_list.append((obs_id, "../ctxs/preprocess_260604.yaml"))
 
     with multiprocessing.Pool() as pool:
         driver_func = partial(
