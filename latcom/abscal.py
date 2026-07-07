@@ -26,8 +26,8 @@ def _make_parser() -> ap.ArgumentParser:
         "-dd",
         nargs="+",
         default=[
-            "/global/cfs/cdirs/sobs/users/skh/data/beams/lat/pointing_model_atm_relcal/", # Nominal SO
-            "/global/cfs/cdirs/sobs/users/skh/data/beams/lat/pointing_model_bs_relcal/", # ASO
+            "/global/cfs/cdirs/sobs/users/skh/data/beams/archive/lat_20260210/pointing_model_atm_relcal/",  # Nominal SO
+            "/global/cfs/cdirs/sobs/users/skh/data/beams/archive/lat_20260210/pointing_model_bs_relcal/",  # ASO
         ],
         help="Path to h5 file containing beam fits",
     )
@@ -133,6 +133,8 @@ if __name__ == "__main__":
             planet = "saturn"
         elif "uranus" in tags:
             planet = "uranus"
+        elif "neptune" in tags:
+            planet = "neptune"
         else:
             print(f"Error: no planet in tags: {tags}")
             continue
@@ -250,12 +252,12 @@ if __name__ == "__main__":
             cal_dict=cal_dict,
         )
 
-        with open(f"../results_{date_str}.pk", "wb") as f:
+        with open(f"../abscals/results_{date_str}.pk", "wb") as f:
             pk.dump(result_dict, f)
 
-        with open(f"../abscals_{date_str}.pk", "wb") as f:
+        with open(f"../abscals/abscals_{date_str}.pk", "wb") as f:
             pk.dump(cal_dict, f)
 
         # Now to write the manifest db
         db = au.make_db(result_dict=result_dict)
-        db.to_file(f"../db_{date_str}.sqlite")
+        db.to_file(f"../abscals/db_{date_str}.sqlite")
