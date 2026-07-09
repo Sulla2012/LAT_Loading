@@ -284,7 +284,7 @@ def get_fpa_temps(obs_list: list[core.axisman.AxisManager]) -> np.array:
        Temperatue for each obs
     """
     fpa_temps = np.zeros((len(obs_list),))
-    cfg = hkdb.HkConfig.from_yaml("../data/hkdb-lat.cfg")
+    cfg = hkdb.HkConfig.from_yaml("../../data/hkdb-lat.cfg")
     for o, obs in enumerate(obs_list):
         field = therm_dict[obs["tube_slot"]]
         lspec = hkdb.LoadSpec(
