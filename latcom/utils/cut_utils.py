@@ -181,6 +181,111 @@ def get_cut_sources(
     return -1 * np.diff(ndet), stage_name[1:]
 
 
+def get_det_bias_cuts(meta: AxisManager) -> tuple[list[int], list[str]]:
+    """
+    Get the number of dets cut by bad bias by reason
+
+    Parameters
+    ----------
+    meta : AxisManager
+        Metadata which contains det_bias_flags
+
+    Returns
+    -------
+    cut_sources : dict[str, float]
+        The fractional number of cuts and their corresponding names.
+    """
+    cut_sources = {
+        "bg_flags": 0,
+        "r_tes_flags": 0,
+        "r_frac_gt_flags": 0,
+        "r_frac_lt_flags": 0,
+        "r_frac_nan_flags": 0,
+    }
+    valid = len(
+        [
+            flag
+            for flag in np.any(meta.preprocess.det_bias_flags["valid"].mask(), axis=-1)
+            if flag
+        ]
+    )
+
+    nan_cuts = len(
+        np.where(
+            meta.preprocess.det_bias_flags["r_frac_gt_flags"].mask().T[0]
+            & meta.preprocess.det_bias_flags["r_frac_lt_flags"].mask().T[0]
+        )[0]
+    )
+
+    cut_sources["r_frac_nan_flags"] = nan_cuts / valid if valid > 0 else 0
+    cut_sources["bg_flags"] = (
+        len(
+            [
+                flag
+                for flag in np.any(
+                    meta.preprocess.det_bias_flags["bg_flags"].mask(), axis=-1
+                )
+                if flag
+            ]
+        )
+        / valid
+        if valid > 0
+        else 0
+    )
+    cut_sources["r_tes_flags"] = (
+        len(
+            [
+                flag
+                for flag in np.any(
+                    meta.preprocess.det_bias_flags["r_tes_flags"].mask(), axis=-1
+                )
+                if flag
+            ]
+        )
+        / valid
+        if valid > 0
+        else 0
+    )
+    cut_sources["r_frac_gt_flags"] = (
+        (
+            len(
+                [
+                    flag
+                    for flag in np.any(
+                        meta.preprocess.det_bias_flags["r_frac_gt_flags"].mask(),
+                        axis=-1,
+                    )
+                    if flag
+                ]
+            )
+            - nan_cuts
+        )
+        / valid
+        if valid > 0
+        else 0
+    )
+    cut_sources["r_frac_lt_flags"] = (
+        (
+            len(
+                [
+                    flag
+                    for flag in np.any(
+                        meta.preprocess.det_bias_flags["r_frac_lt_flags"].mask(),
+                        axis=-1,
+                    )
+                    if flag
+                ]
+            )
+            - nan_cuts
+        )
+        / valid
+        if valid > 0
+        else 0
+    )
+
+    return cut_sources
+
+
 def get_det_cal_cuts(meta: AxisManager) -> tuple[list[int], list[str]]:
     """
     Get the number of dets with bad det cal
@@ -196,11 +301,11 @@ def get_det_cal_cuts(meta: AxisManager) -> tuple[list[int], list[str]]:
 
     Returns
     -------
-    ncut, cut_name : tuple[list[int], list[str]]
+    cut_sources : dict[str, float]
         The number of cuts and their corresponding names.
     """
     ncut = [0]
-    cut_name = []
+    cut_names = []
 
     for key in meta.det_cal.keys():
         try:
@@ -208,8 +313,8 @@ def get_det_cal_cuts(meta: AxisManager) -> tuple[list[int], list[str]]:
                 np.where(np.isnan(meta.det_cal[key][net_flag]))[0]
             )
             ncut.append(ncut)
-            cut_name.append(key)
+            cut_names.append(key)
         except:
             continue
 
-    return np.diff(ncut), cut_name
+    return {cut_name: ncut for cut_name, ncut in zip(cut_names, ncut)}

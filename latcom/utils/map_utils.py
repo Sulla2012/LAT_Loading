@@ -107,9 +107,9 @@ def get_matching_obs(
                     matching_times[i, j] = k
     matched_times = []  # These are the times for which all arrays have a matching obs
     for i, time in enumerate(matching_times.T):
-        time[ignore] = (
-            0  # set arrays which we want to ignore to 0, so they will always be matched
-        )
+        # time[ignore] = (
+        #    0  # set arrays which we want to ignore to 0, so they will always be matched
+        # )
         if np.any(time == 999999):
             continue
         matched_times.append(all_times[i])

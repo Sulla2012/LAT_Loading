@@ -115,7 +115,7 @@ therm_dict = {
     "i2": "cryo-tauhk-1.tauhk_data_full.RTD_OT2_100mK_1_temperature",
     "i3": "cryo-tauhk-1.tauhk_data_full.RTD_OT13_100mK_1_temperature",
     "i4": "cryo-tauhk-1.tauhk_data_full.RTD_OT14_100mK_1_temperature",
-    "15": "cryo-tauhk-1.tauhk_data_full.RTD_OT5_100mK_1_temperature",
+    "i5": "cryo-tauhk-1.tauhk_data_full.RTD_OT5_100mK_1_temperature",
     "i6": "cryo-tauhk-1.tauhk_data_full.RTD_OT6_100mK_1_temperature",
     "o1": "cryo-tauhk-1.tauhk_data_full.RTD_OT11_100mK_1_temperature",
     "o2": "cryo-tauhk-1.tauhk_data_full.RTD_OT12_100mK_1_temperature",
@@ -284,7 +284,9 @@ def get_fpa_temps(obs_list: list[core.axisman.AxisManager]) -> np.array:
        Temperatue for each obs
     """
     fpa_temps = np.zeros((len(obs_list),))
-    cfg = hkdb.HkConfig.from_yaml("../../data/hkdb-lat.cfg")
+    cfg = hkdb.HkConfig.from_yaml(
+        "/global/u2/j/jorlo/dev/LAT_Loading/data/hkdb-lat.cfg"
+    )
     for o, obs in enumerate(obs_list):
         field = therm_dict[obs["tube_slot"]]
         lspec = hkdb.LoadSpec(
@@ -446,9 +448,18 @@ def get_all_iv_data(obs_list: list[OrderedDict]) -> dict:
     dict
         A dictionary containing the IV data, PWVs, and UFM temps for each observation.
     """
+    if len(obs_list) == 0:
+        print("obs_list is empty")
+        return
     iv_dict = {}
     pwv = pwv_interp()
     ctx = core.Context("../ctxs/smurf_detsets_local.yaml")
+    psats = []
+    bgmaps = []
+    obs_ids = []
+    pwvs = []
+    els = []
+    ufm_temps = []
 
     for i in range(len(obs_list)):
         obs = obs_list[i]
@@ -457,15 +468,24 @@ def get_all_iv_data(obs_list: list[OrderedDict]) -> dict:
 
         try:
             add_iv_info(meta, ctx)
-            iv_dict[obs_id] = {}
         except FileNotFoundError:
             print(meta.obs_info.obs_id)
             continue
 
-        iv_dict[obs_id]["psats"] = meta.iv["p_sat"]
-        iv_dict[obs_id]["pwvs"] = float(pwv((obs["start_time"] + obs["stop_time"]) / 2))
-        iv_dict[obs_id]["ufm_temps"] = float(get_fpa_temps(obs_list[i : i + 1])[0])
-
+        psats.append(meta.iv["p_sat"])
+        bgmaps.append(meta.iv["bgmap"][...])
+        obs_ids.append(obs_id)
+        pwvs.append(float(pwv((obs["start_time"] + obs["stop_time"]) / 2)))
+        ufm_temps.append(float(get_fpa_temps(obs_list[i : i + 1])[0]))
+        els.append(meta.obs_info.el_center)
+    iv_dict = {
+        "psats": psats,
+        "bgmaps": bgmaps,
+        "obs_ids": obs_ids,
+        "pwvs": pwvs,
+        "ufm_temps": ufm_temps,
+        "els": els,
+    }
     ufm = obs_list[0]["stream_ids_list"].split("_")[-1]
     with open(f"../ivs/ivs_{ufm}.pk", "wb") as f:
         pk.dump(iv_dict, f)

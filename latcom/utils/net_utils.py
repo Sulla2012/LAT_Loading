@@ -292,26 +292,14 @@ def get_nets(
                 print(f"Error: no valid noise ken in {meta.preprocess.keys()}")
                 continue
             ndet = len(np.where(wnoise != 0)[0])
-
-            # Shitty units check
-            try:
-                if 1e-4 < wnoise[wnoise > 0][0] < 1e-3:
-                    net_mes = wnoise
-                    factor = 1e6
-                elif 1e-1 < wnoise[wnoise > 0][0]:
-                    net_mes = 1 / np.sqrt(2) * wnoise * raw_cal
-                    factor = 1
-                else:
-                    net_mes = 1 / np.sqrt(2) * wnoise * raw_cal
-                    factor = 1e6
-            except IndexError:
-                continue
+            net_mes = 1 / np.sqrt(2) * wnoise * raw_cal
+            factor = 1e6
             clean_nets = []
             for net in net_mes:
-                if net * factor > 100:
+                if net * factor > 50:
                     clean_nets.append(net)
             clean_nets = np.array(clean_nets)
-            array_net = np.nansum((clean_nets * 1e6) ** (-2)) ** (-1 / 2)
+            array_net = np.nansum((clean_nets * factor) ** (-2)) ** (-1 / 2)
 
             arrays.append(cur_wafer)
             ret_bands.append(band)
