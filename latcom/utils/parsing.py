@@ -6,7 +6,7 @@ from . import map_utils as mu
 
 
 def parse_dict(net_dict: dict) -> pd.DataFrame:
-    from utils.optical_loading import pwv_interp
+    from latcom.utils.optical_loading import pwv_interp
 
     pwv = pwv_interp()
     labels = []

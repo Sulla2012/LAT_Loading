@@ -1,0 +1,281 @@
+context_file: '/global/cfs/cdirs/sobs/lat-iso/aso/v2/contexts/use_this_local_260604.yaml'
+plot_dir: '/global/cfs/cdirs/sobs/lat-iso/aso/v2/preprocessing/archives/'
+
+subobs:
+  use: ['wafer_slot', 'wafer.bandpass']
+  label: wafer_slot
+
+archive:
+  batch_size: 50
+  index: '/global/cfs/cdirs/sobs/lat-iso/aso/v2/preprocessing/archives/process_archive.sqlite'
+  policy:
+    type: 'simple'
+    filename: '/global/cfs/cdirs/sobs/lat-iso/aso/v2/preprocessing/archives/preprocess_archive.h5'
+
+process_pipe:
+    - name: "pointing_model"
+      process: True
+
+    - name: "correct_iir_params"
+      process: True
+
+    - name: "smurfgaps_flags"
+      calc:
+        buffer: 200
+        name: "smurfgaps"
+        merge: True
+      save: True
+
+    - name: "acu_drop_flags"
+      calc:
+        buffer: 200
+        name: "acu_drop_flags"
+        merge: True
+      save: True
+
+    - name : "fp_flags"
+      calc:
+        merge: False
+      save: True
+      select: True
+
+    - name: "detcal_nan_cuts"
+      select:
+        fields: ['tau_eff', 'phase_to_pW']
+
+    - name: "flag_turnarounds"
+      process:
+        method: "scanspeed"
+      calc:
+        method: "scanspeed"
+      save: True
+
+    - name: "det_bias_flags"
+      calc:
+        rfrac_range: [0.2, 0.8]
+      save: True
+      select: True
+
+    - name: "detrend"
+      process:
+        method: "median"
+
+    - name: "trends"
+      calc:
+        max_trend: 2.5
+        t_piece: 10
+      save: True
+      select:
+        kind: "any"
+
+    - name : "source_flags"
+      calc:
+        mask: {'shape': 'circle',
+               'xyr': [0, 0, 0.167]} # degrees
+        center_on: ['venus', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'] # list of str
+        res: 1 # arcmin
+        max_pix: 528768000 # max number of allowed pixels in map
+        distance: 0.167 # max distance of footprint from source in degrees
+      save: True
+      select: True # optional
+
+    - name: "glitchfill"
+      flags: "source_flags.venus"
+      process:
+        nbuf: 100
+        use_pca: False
+        modes: 1
+        wrap: "signal"
+        in_place: True
+
+    - name: "glitchfill"
+      flags: "source_flags.mars"
+      process:
+        nbuf: 100
+        use_pca: False
+        modes: 1
+        wrap: "signal"
+        in_place: True
+
+    - name: "glitchfill"
+      flags: "source_flags.jupiter"
+      process:
+        nbuf: 100
+        use_pca: False
+        modes: 1
+        wrap: "signal"
+        in_place: True
+
+    - name: "glitchfill"
+      flags: "source_flags.saturn"
+      process:
+        nbuf: 100
+        use_pca: False
+        modes: 1
+        wrap: "signal"
+        in_place: True
+
+    - name: "glitchfill"
+      flags: "source_flags.uranus"
+      process:
+        nbuf: 100
+        use_pca: False
+        modes: 1
+        wrap: "signal"
+        in_place: True
+
+    - name: "glitchfill"
+      flags: "source_flags.neptune"
+      process:
+        nbuf: 100
+        use_pca: False
+        modes: 1
+        wrap: "signal"
+        in_place: True
+
+    - name: "jumps"
+      calc:
+        function: "twopi_jumps"
+      save:
+        jumps_name: "jumps_2pi"
+      select:
+        max_n_jumps: 10
+
+    - name: "fix_jumps"
+      process:
+        jumps_aman: "jumps_2pi"
+
+    - name: "glitchfill"
+      flags: "jumps_2pi.jump_flag"
+      process:
+        nbuf: 100
+        use_pca: False
+        modes: 1
+        wrap: "signal"
+        in_place: True
+
+    - name: "jumps"
+      calc:
+        function: "slow_jumps"
+      save:
+        jumps_name: "jumps_slow"
+      select:
+        max_n_jumps: 10
+
+    - name: "fix_jumps"
+      process:
+        jumps_aman: "jumps_slow"
+
+    - name: "glitchfill"
+      flags: "jumps_slow.jump_flag"
+      process:
+        nbuf: 100
+        use_pca: False
+        modes: 1
+        wrap: "signal"
+        in_place: True
+
+    - name: "glitches"
+      calc:
+        t_glitch: 0.007
+        buffer: 100
+        hp_fc: 6
+        n_sig: 15
+      save: True
+      select:
+        max_n_glitch: 100
+        sig_glitch: 15
+
+    - name: "glitchfill"
+      flags: "glitches.glitch_flags"
+      process:
+        nbuf: 100
+        use_pca: False
+        modes: 1
+        wrap: "signal"
+        in_place: True
+
+    - name : "combine_flags"
+      process:
+        flag_labels: ['jumps_2pi.jump_flag', 'jumps_slow.jump_flag',
+                      'glitches.glitch_flags', 'source_flags.venus',
+                      'source_flags.mars', 'source_flags.jupiter',
+                      'source_flags.saturn', 'source_flags.uranus',
+                      'source_flags.neptune','turnaround_flags.turnarounds',
+                      'smurfgaps.smurfgaps', 'acu_drops.acu_drop_flags']
+        total_flags_label: 'glitch_flags'
+        method: 'union'
+
+    - name: "detrend"
+      process:
+        method: "median"
+
+    - name : "ptp_flags"
+      calc:
+        signal_name: "signal"
+        kurtosis_threshold: 5
+      save: True
+      select: True
+
+    - name: "calibrate"
+      process:
+        kind: "array"
+        cal_array: "det_cal.phase_to_pW"
+
+    - name: "fourier_filter"
+      process:
+        filters:
+          - name: "iir_filter"
+            filter_params:
+              invert: True
+          - name: "timeconst_filter"
+            filter_params:
+              timeconst: "det_cal.tau_eff"
+              invert: True
+
+    - name: "apodize"
+      process:
+        apodize_samps: 2000
+
+    # - name: "calibrate"
+    #   process:
+    #     kind: "array"
+    #     cal_array: "abscal.abscal_cmb"
+
+    # - name: "calibrate"
+    #   skip_on_sim: True
+    #   process:
+    #     kind: "array"
+    #     cal_array: "relcal.relcal"
+
+    - name: "psd"
+      signal: "signal"
+      wrap: "psdT"
+      process:
+        freq_spacing: .05
+        average: "median"
+        noverlap: 0
+        full_output: True
+      save: True
+
+    - name: "noise"
+      fit: False
+      subscan: False
+      psd: "psdT"
+      calc:
+        low_f: 10
+        high_f: 20
+        merge_name: 'noise_statsT'
+      save:
+        wrap_name: "noiseT"
+      # select:
+      #   min_noise: 0.00025 # K_cmb / sqrt(Hz)
+      #   max_noise: 0.00090 # K_cmb / sqrt(Hz)
+
+    # - name : "tod_stats"
+    #   signal: "signal"
+    #   wrap: "tod_stats"
+    #   calc:
+    #     stat_names: ["median", "std", "skew", "kurtosis", "ptp"]
+    #     split_subscans: True
+    #   save: True
