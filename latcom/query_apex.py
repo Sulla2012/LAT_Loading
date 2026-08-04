@@ -10,7 +10,7 @@ APEX_DATA_URL = "http://archive.eso.org/wdb/wdb/eso/meteo_apex/query"
 
 est_tz = timezone(timedelta(hours=-5))
 
-start_date = dt.datetime(2025, 4, 1, tzinfo=est_tz)
+start_date = dt.datetime(2025, 5, 1, tzinfo=est_tz)
 end_date = dt.datetime.now(tz=ZoneInfo("America/New_York"))
 
 request = requests.post(
