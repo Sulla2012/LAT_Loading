@@ -110,19 +110,19 @@ UXM_dict = {
 
 # Dict mapping OTs to housekeeping channels for level 3 hk database.
 therm_dict = {
-    "c1": "cryo-tauhk-1.tauhk_data_full.RTD_OT4_100mK_1_temperature",
-    "i1": "cryo-tauhk-1.tauhk_data_full.RTD_OT1_100mK_1_temperature",
-    "i2": "cryo-tauhk-1.tauhk_data_full.RTD_OT2_100mK_1_temperature",
-    "i3": "cryo-tauhk-1.tauhk_data_full.RTD_OT13_100mK_1_temperature",
-    "i4": "cryo-tauhk-1.tauhk_data_full.RTD_OT14_100mK_1_temperature",
-    "i5": "cryo-tauhk-1.tauhk_data_full.RTD_OT5_100mK_1_temperature",
-    "i6": "cryo-tauhk-1.tauhk_data_full.RTD_OT6_100mK_1_temperature",
-    "o1": "cryo-tauhk-1.tauhk_data_full.RTD_OT11_100mK_1_temperature",
-    "o2": "cryo-tauhk-1.tauhk_data_full.RTD_OT12_100mK_1_temperature",
-    "o3": "cryo-tauhk-1.tauhk_data_full.RTD_OT9_100mK_1_temperature",
-    "o4": "cryo-tauhk-1.tauhk_data_full.RTD_OT10_100mK_1_temperature",
-    "o5": "cryo-tauhk-1.tauhk_data_full.RTD_OT7_100mK_1_temperature",
-    "o6": "cryo-tauhk-1.tauhk_data_full.RTD_OT8_100mK_1_temperature",
+    "c1": "cryo-tauhk-1.tauhk_data_full.RTD_OT4_100mK_2_temperature",
+    "i1": "cryo-tauhk-1.tauhk_data_full.RTD_OT1_100mK_2_temperature",
+    "i2": "cryo-tauhk-1.tauhk_data_full.RTD_OT2_100mK_2_temperature",
+    "i3": "cryo-tauhk-1.tauhk_data_full.RTD_OT13_100mK_2_temperature",
+    "i4": "cryo-tauhk-1.tauhk_data_full.RTD_OT14_100mK_2_temperature",
+    "i5": "cryo-tauhk-1.tauhk_data_full.RTD_OT5_100mK_2_temperature",
+    "i6": "cryo-tauhk-1.tauhk_data_full.RTD_OT6_100mK_2_temperature",
+    "o1": "cryo-tauhk-1.tauhk_data_full.RTD_OT11_100mK_2_temperature",
+    "o2": "cryo-tauhk-1.tauhk_data_full.RTD_OT12_100mK_2_temperature",
+    "o3": "cryo-tauhk-1.tauhk_data_full.RTD_OT9_100mK_2_temperature",
+    "o4": "cryo-tauhk-1.tauhk_data_full.RTD_OT10_100mK_2_temperature",
+    "o5": "cryo-tauhk-1.tauhk_data_full.RTD_OT7_100mK_2_temperature",
+    "o6": "cryo-tauhk-1.tauhk_data_full.RTD_OT8_100mK_2_temperature",
 }
 
 
