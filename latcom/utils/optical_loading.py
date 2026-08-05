@@ -451,6 +451,9 @@ def get_all_iv_data(obs_list: list[OrderedDict]) -> dict:
     if len(obs_list) == 0:
         print("obs_list is empty")
         return
+    ufm = obs_list[0]["stream_ids_list"].split("_")[-1]
+    print("Starting ", ufm)
+
     iv_dict = {}
     pwv = pwv_interp()
     ctx = core.Context("../ctxs/smurf_detsets_local.yaml")
@@ -486,7 +489,7 @@ def get_all_iv_data(obs_list: list[OrderedDict]) -> dict:
         "ufm_temps": ufm_temps,
         "els": els,
     }
-    ufm = obs_list[0]["stream_ids_list"].split("_")[-1]
+    print("Finished ", ufm)
     with open(f"../ivs/ivs_{ufm}.pk", "wb") as f:
         pk.dump(iv_dict, f)
 

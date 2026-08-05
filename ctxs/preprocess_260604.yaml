@@ -2,7 +2,7 @@ tags:
   basedir:  /global/cfs/cdirs/sobs/metadata/lat
   manifestdir: /global/cfs/cdirs/sobs/metadata/lat/manifests/
   # relcaldir: /global/cfs/cdirs/sobs/users/twmorris/shared/lat/relcal/20260129/
-  detmatchdir: /global/cfs/cdirs/sobs/users/mmccrack/so/det_match/lat/260204_aso/aso/focal_planes_260517/results/
+  detmatchdir: /global/cfs/cdirs/sobs/metadata/lat/manifests/det_match/lat_det_match_260520m/
   focalplanedir: /global/cfs/cdirs/sobs/users/skh/data/pointing/lat/finalize_focal_plane/results/aso_prelim/
   preprocessdir: /global/cfs/cdirs/sobs/lat-iso/aso/v2/preprocessing/archives/
 
