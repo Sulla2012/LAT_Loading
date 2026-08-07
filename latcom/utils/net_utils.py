@@ -1,9 +1,12 @@
+import astropy.units as u
 import numpy as np
+import pandas as pd
 from scipy import interpolate
 from sotodlib import core
 from sotodlib.core.metadata.loader import LoaderError
 from sotodlib.tod_ops.flags import get_det_bias_flags
 
+from latcom.utils.map_utils import temp_conv
 from latcom.utils.optical_loading import ufm_dict
 
 
@@ -565,3 +568,365 @@ def parse_nep_results(results: list) -> dict:
             nep_dict[array][band]["phiconv"].append(phiconvs[i])
 
     return nep_dict
+
+
+def get_all_times(tobs: np.ndarray) -> np.ndarray:
+    """
+    Get all unique times from the input array.
+
+    Parameters
+    ----------
+    tobs : np.ndarray
+        Array of observation times
+
+    Returns
+    -------
+    all_times : np.ndarray
+        Array of unique times
+    """
+    all_times = [float(tobs[0][0])]  # initialize with 1 time
+    for i, cur_times in enumerate(tobs):
+        for cur_time in cur_times:
+            isclose = False
+            for time in all_times:
+                if np.isclose(time, cur_time, rtol=0, atol=300):
+                    isclose = True
+                    continue
+            if not isclose:
+                all_times.append(cur_time)
+
+    return np.array(all_times)
+
+
+def get_matching_stats(
+    all_times: np.ndarray,
+    unmatched_nets: np.ndarray,
+    unmatched_ndets: np.ndarray,
+    unmatched_obs_ids: np.ndarray,
+    unmatched_tobs: np.ndarray,
+    unmatched_pwvs: np.ndarray,
+    unmatched_els: np.ndarray,
+    temp_conv: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Get matching statistics for the given times and unmatched data.
+
+    Parameters
+    ----------
+    all_times : np.ndarray
+        Array of unique times
+    unmatched_nets : np.ndarray
+        Array of unmatched nets
+    unmatched_ndets : np.ndarray
+        Array of unmatched ndets
+    unmatched_obs_ids : np.ndarray
+        Array of unmatched observation IDs
+    unmatched_tobs : np.ndarray
+        Array of unmatched observation times
+    unmatched_pwvs : np.ndarray
+        Array of unmatched pwvs
+    unmatched_els : np.ndarray
+        Array of unmatched els
+    temp_conv : float
+        Temperature conversion factor
+
+    Returns
+    -------
+    [matched_nets, matched_ndets, matched_obs_ids, matched_t_obs, matched_pwvs, matched_pwvs_sinel] : tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+        Tuple of matching statistics
+    """
+    nets = [[] for i in range(len(all_times))]
+    ndets = [[] for i in range(len(all_times))]
+    obs_ids = []
+    t_obs = np.zeros(len(all_times))
+    pwvs_sinel = np.zeros(len(all_times))
+    pwvs = np.zeros(len(all_times))
+
+    for obs_index, time in enumerate(all_times):
+        saved_aux_data = False
+        for array_index in range(len(unmatched_obs_ids)):
+            flag = np.where(np.abs(np.array(unmatched_tobs[array_index]) - time) < 300)[
+                0
+            ]
+            if len(flag) > 1:
+                print(obs_index, array_index)
+            if len(flag) != 1:
+                continue
+            flag = flag[0]
+            nets[obs_index].append(unmatched_nets[array_index][flag] * temp_conv)
+            ndets[obs_index].append(unmatched_ndets[array_index][flag])
+
+            if not saved_aux_data:
+                obs_ids.append(str(unmatched_obs_ids[array_index][flag]))
+                t_obs[obs_index] = unmatched_tobs[array_index][flag]
+                pwvs[obs_index] = unmatched_pwvs[array_index][flag]
+                pwvs_sinel[obs_index] = pwvs[obs_index] / np.sin(
+                    np.deg2rad(unmatched_els[array_index][flag])
+                )
+            saved_aux_data = True
+
+    return nets, ndets, np.array(obs_ids), t_obs, pwvs, pwvs_sinel
+
+
+def comb_by_freq(net_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Combine net results by frequency.
+
+    Parameters
+    ----------
+    net_df : pd.DataFrame
+        DataFrame containing net results
+
+    Returns
+    -------
+    df_freq : pd.DataFrame
+        DataFrame with combined results by frequency
+    """
+    # Implementation for combining by frequency
+    set_labels = np.unique(net_df.labels.to_numpy()).astype(str)
+    tmp_obs_ids_090 = [
+        net_df[net_df.labels.str.contains(label)].obs.to_numpy()
+        for label in set_labels
+        if "090" in label
+    ]
+    tmp_obs_ids_150 = [
+        net_df[net_df.labels.str.contains(label)].obs.to_numpy()
+        for label in set_labels
+        if "150" in label
+    ]
+    tmp_obs_ids_220 = [
+        net_df[net_df.labels.str.contains(label)].obs.to_numpy()
+        for label in set_labels
+        if "220" in label
+    ]
+    tmp_obs_ids_280 = [
+        net_df[net_df.labels.str.contains(label)].obs.to_numpy()
+        for label in set_labels
+        if "280" in label
+    ]
+
+    tmp_nets_090 = [
+        net_df[net_df.labels.str.contains(label)].nets.to_numpy()
+        for label in set_labels
+        if "090" in label
+    ]
+    tmp_nets_150 = [
+        net_df[net_df.labels.str.contains(label)].nets.to_numpy()
+        for label in set_labels
+        if "150" in label
+    ]
+    tmp_nets_220 = [
+        net_df[net_df.labels.str.contains(label)].nets.to_numpy()
+        for label in set_labels
+        if "220" in label
+    ]
+    tmp_nets_280 = [
+        net_df[net_df.labels.str.contains(label)].nets.to_numpy()
+        for label in set_labels
+        if "280" in label
+    ]
+
+    tmp_ndets_090 = [
+        net_df[net_df.labels.str.contains(label)].ndets.to_numpy()
+        for label in set_labels
+        if "090" in label
+    ]
+    tmp_ndets_150 = [
+        net_df[net_df.labels.str.contains(label)].ndets.to_numpy()
+        for label in set_labels
+        if "150" in label
+    ]
+    tmp_ndets_220 = [
+        net_df[net_df.labels.str.contains(label)].ndets.to_numpy()
+        for label in set_labels
+        if "220" in label
+    ]
+    tmp_ndets_280 = [
+        net_df[net_df.labels.str.contains(label)].ndets.to_numpy()
+        for label in set_labels
+        if "280" in label
+    ]
+
+    tmp_tobs_090 = [
+        net_df[net_df.labels.str.contains(label)].t_obs.to_numpy()
+        for label in set_labels
+        if "090" in label
+    ]
+    tmp_tobs_150 = [
+        net_df[net_df.labels.str.contains(label)].t_obs.to_numpy()
+        for label in set_labels
+        if "150" in label
+    ]
+    tmp_tobs_220 = [
+        net_df[net_df.labels.str.contains(label)].t_obs.to_numpy()
+        for label in set_labels
+        if "220" in label
+    ]
+    tmp_tobs_280 = [
+        net_df[net_df.labels.str.contains(label)].t_obs.to_numpy()
+        for label in set_labels
+        if "280" in label
+    ]
+
+    tmp_pwv_090 = [
+        net_df[net_df.labels.str.contains(label)].pwv.to_numpy()
+        for label in set_labels
+        if "090" in label
+    ]
+    tmp_pwv_150 = [
+        net_df[net_df.labels.str.contains(label)].pwv.to_numpy()
+        for label in set_labels
+        if "150" in label
+    ]
+    tmp_pwv_220 = [
+        net_df[net_df.labels.str.contains(label)].pwv.to_numpy()
+        for label in set_labels
+        if "220" in label
+    ]
+    tmp_pwv_280 = [
+        net_df[net_df.labels.str.contains(label)].pwv.to_numpy()
+        for label in set_labels
+        if "280" in label
+    ]
+
+    tmp_els_090 = [
+        net_df[net_df.labels.str.contains(label)].el.to_numpy()
+        for label in set_labels
+        if "090" in label
+    ]
+    tmp_els_150 = [
+        net_df[net_df.labels.str.contains(label)].el.to_numpy()
+        for label in set_labels
+        if "150" in label
+    ]
+    tmp_els_220 = [
+        net_df[net_df.labels.str.contains(label)].el.to_numpy()
+        for label in set_labels
+        if "220" in label
+    ]
+    tmp_els_280 = [
+        net_df[net_df.labels.str.contains(label)].el.to_numpy()
+        for label in set_labels
+        if "280" in label
+    ]
+
+    all_times_090 = get_all_times(tmp_tobs_090)
+    all_times_150 = get_all_times(tmp_tobs_150)
+    all_times_220 = get_all_times(tmp_tobs_220)
+    all_times_280 = get_all_times(tmp_tobs_280)
+
+    temp_conv_090 = temp_conv(
+        T_B=2.725 * u.Kelvin, flavor="MF", ch="MF_1", kind="baseline"
+    )
+    temp_conv_150 = temp_conv(
+        T_B=2.725 * u.Kelvin, flavor="MF", ch="MF_2", kind="baseline"
+    )
+    temp_conv_220 = temp_conv(
+        T_B=2.725 * u.Kelvin, flavor="UHF", ch="UHF_1", kind="baseline"
+    )
+    temp_conv_280 = temp_conv(
+        T_B=2.725 * u.Kelvin, flavor="UHF", ch="UHF_2", kind="baseline"
+    )
+
+    nets_090, ndets_090, obs_ids_090, t_obs_090, pwvs_sinel_090, pwvs_090 = (
+        get_matching_stats(
+            all_times=all_times_090,
+            unmatched_nets=tmp_nets_090,
+            unmatched_ndets=tmp_ndets_090,
+            unmatched_obs_ids=tmp_obs_ids_090,
+            unmatched_tobs=tmp_tobs_090,
+            unmatched_pwvs=tmp_pwv_090,
+            unmatched_els=tmp_els_090,
+            temp_conv=temp_conv_090,
+        )
+    )
+
+    nets_150, ndets_150, obs_ids_150, t_obs_150, pwvs_sinel_150, pwvs_150 = (
+        get_matching_stats(
+            all_times=all_times_150,
+            unmatched_nets=tmp_nets_150,
+            unmatched_ndets=tmp_ndets_150,
+            unmatched_obs_ids=tmp_obs_ids_150,
+            unmatched_tobs=tmp_tobs_150,
+            unmatched_pwvs=tmp_pwv_150,
+            unmatched_els=tmp_els_150,
+            temp_conv=temp_conv_150,
+        )
+    )
+
+    nets_220, ndets_220, obs_ids_220, t_obs_220, pwvs_sinel_220, pwvs_220 = (
+        get_matching_stats(
+            all_times=all_times_220,
+            unmatched_nets=tmp_nets_220,
+            unmatched_ndets=tmp_ndets_220,
+            unmatched_obs_ids=tmp_obs_ids_220,
+            unmatched_tobs=tmp_tobs_220,
+            unmatched_pwvs=tmp_pwv_220,
+            unmatched_els=tmp_els_220,
+            temp_conv=temp_conv_220,
+        )
+    )
+
+    nets_280, ndets_280, obs_ids_280, t_obs_280, pwvs_sinel_280, pwvs_280 = (
+        get_matching_stats(
+            all_times=all_times_280,
+            unmatched_nets=tmp_nets_280,
+            unmatched_ndets=tmp_ndets_280,
+            unmatched_obs_ids=tmp_obs_ids_280,
+            unmatched_tobs=tmp_tobs_280,
+            unmatched_pwvs=tmp_pwv_280,
+            unmatched_els=tmp_els_280,
+            temp_conv=temp_conv_280,
+        )
+    )
+
+    nets_090_comb = np.zeros(len(all_times_090))
+    for i in range(len(nets_090)):
+        nets_090_comb[i] = np.sum(1 / np.array(nets_090[i]) ** 2) ** (-1 / 2)
+        ndets_090[i] = np.sum(ndets_090[i])
+
+    nets_150_comb = np.zeros(len(all_times_150))
+    for i in range(len(nets_150)):
+        nets_150_comb[i] = np.sum(1 / np.array(nets_150[i]) ** 2) ** (-1 / 2)
+        ndets_150[i] = np.sum(ndets_150[i])
+
+    nets_220_comb = np.zeros(len(all_times_220))
+    for i in range(len(nets_220)):
+        nets_220_comb[i] = np.sum(1 / np.array(nets_220[i]) ** 2) ** (-1 / 2)
+        ndets_220[i] = np.sum(ndets_220[i])
+
+    nets_280_comb = np.zeros(len(all_times_280))
+    for i in range(len(nets_280)):
+        nets_280_comb[i] = np.sum(1 / np.array(nets_280[i]) ** 2) ** (-1 / 2)
+        ndets_280[i] = np.sum(ndets_280[i])
+
+    nets = np.concatenate([nets_090_comb, nets_150_comb, nets_220_comb, nets_280_comb])
+    pwvs = np.concatenate([pwvs_090, pwvs_150, pwvs_220, pwvs_280])
+    pwvs_sinel = np.concatenate(
+        [pwvs_sinel_090, pwvs_sinel_150, pwvs_sinel_220, pwvs_sinel_280]
+    )
+    labels = np.concatenate(
+        [
+            ["f090"] * len(pwvs_090),
+            ["f150"] * len(pwvs_150),
+            ["f220"] * len(pwvs_220),
+            ["f280"] * len(pwvs_280),
+        ]
+    )
+    t_obs = np.concatenate([t_obs_090, t_obs_150, t_obs_220, t_obs_280])
+    ndets = np.concatenate([ndets_090, ndets_150, ndets_220, ndets_280])
+    obs_ids = np.concatenate([obs_ids_090, obs_ids_150, obs_ids_220, obs_ids_280])
+
+    df_freq = pd.DataFrame(
+        {
+            "labels": labels,
+            "nets": nets,
+            "pwv": pwvs,
+            "pwvs_sinel": pwvs_sinel,
+            "t_obs": t_obs,
+            "ndets": ndets,
+            "obs_ids": obs_ids,
+        }
+    )
+
+    return df_freq

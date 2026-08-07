@@ -92,7 +92,7 @@ def get_matching_obs(
         for ob in obs_ids:
             isclose = False
             for time in all_times:
-                if np.isclose(time, float(ob.split("_")[1]), rtol=0, atol=40):
+                if np.isclose(time, float(ob.split("_")[1]), rtol=0, atol=300):
                     isclose = True
                     continue
             if not isclose:
@@ -103,17 +103,14 @@ def get_matching_obs(
     for i, obs in enumerate(obs_id_list):
         for j, time in enumerate(all_times):
             for k in range(len(obs)):
-                if np.isclose(float(obs[k].split("_")[1]), time, rtol=0, atol=40):
+                if np.isclose(float(obs[k].split("_")[1]), time, rtol=0, atol=300):
                     matching_times[i, j] = k
     matched_times = []  # These are the times for which all arrays have a matching obs
     for i, time in enumerate(matching_times.T):
-        # time[ignore] = (
-        #    0  # set arrays which we want to ignore to 0, so they will always be matched
-        # )
-        if np.any(time == 999999):
-            continue
         matched_times.append(all_times[i])
-    array_matched_times = np.zeros((len(obs_id_list), len(matched_times)), dtype=int)
+    array_matched_times = -1 * np.ones(
+        (len(obs_id_list), len(matched_times)), dtype=int
+    )
 
     for i, obs_ids in enumerate(obs_id_list):
         for j, time in enumerate(matched_times):
