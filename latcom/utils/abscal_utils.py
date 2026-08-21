@@ -36,8 +36,8 @@ def data_to_cal_factor(
 # }
 
 fwhm_cuts = {
-    "030": [6.0, 10.8],
-    "040": [4.1, 8.1],
+    "030": [5.1, 9.7],
+    "040": [3.5, 6.8],
     "090": [1.8, 3.0],
     "150": [1.1, 2.0],
     "220": [0.8, 1.8],
@@ -46,6 +46,8 @@ fwhm_cuts = {
 
 # These are roughly 20% - 500% the expected beam value
 beam_volume_cuts = {
+    "030": [2e-7, 6e-6],
+    "040": [1e-7, 5e-6],
     "090": [8e-8, 2e-6],
     "150": [4e-8, 1e-6],
     "220": [1e-8, 2e-7],
@@ -350,7 +352,12 @@ def make_db(result_dict: dict) -> core.metadata.ManifestDb:
             ]
         )
         rs.rows = data
-        io_meta.write_dataset(rs, "../abscals/abscals.h5", f"{key}", overwrite=True)
+        io_meta.write_dataset(
+            rs,
+            "/global/u2/j/jorlo/dev/LAT_Loading/abscals/abscals.h5",
+            f"{key}",
+            overwrite=True,
+        )
 
     # Record in ManifestDb.
     scheme = core.metadata.ManifestScheme()

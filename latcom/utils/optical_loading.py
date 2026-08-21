@@ -143,7 +143,7 @@ def keys_from_wafer(wafer: str, band: str):
             ufm_band = "UHF_2"
         else:
             raise ValueError(f"Error: bad band {band} for ufm {wafer}")
-    elif "lv" in wafer:
+    elif "ln" in wafer:
         ufm_type = "LF"
         if band == "030":
             ufm_band = "LF_1"
@@ -456,7 +456,9 @@ def get_all_iv_data(obs_list: list[OrderedDict]) -> dict:
 
     iv_dict = {}
     pwv = pwv_interp()
-    ctx = core.Context("../ctxs/smurf_detsets_local.yaml")
+    ctx = core.Context(
+        "/global/u2/j/jorlo/dev/LAT_Loading/ctxs/smurf_detsets_local.yaml"
+    )
     psats = []
     bgmaps = []
     obs_ids = []
@@ -490,7 +492,7 @@ def get_all_iv_data(obs_list: list[OrderedDict]) -> dict:
         "els": els,
     }
     print("Finished ", ufm)
-    with open(f"../ivs/ivs_{ufm}.pk", "wb") as f:
+    with open(f"/global/u2/j/jorlo/dev/LAT_Loading/ivs/ivs_{ufm}.pk", "wb") as f:
         pk.dump(iv_dict, f)
 
     return iv_dict
