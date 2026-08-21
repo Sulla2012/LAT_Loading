@@ -5,8 +5,8 @@ import multiprocessing
 from sotodlib import core
 
 from latcom.utils.optical_loading import (
+    UXM_dict,
     get_all_iv_data,
-    ufm_dict,
 )
 
 
@@ -25,7 +25,7 @@ def _make_parser() -> ap.ArgumentParser:
         "--end",
         "-e",
         type=lambda d: dt.datetime.strptime(d, "%Y-%m-%d").astimezone(dt.timezone.utc),
-        default="2027-01-01",
+        default="2026-07-01",
         help="End time for obs",
     )
     return parser
@@ -35,8 +35,10 @@ if __name__ == "__main__":
     parser = _make_parser()
     args = parser.parse_args()
 
-    ctx = core.Context("../ctxs/smurf_detsets_local.yaml")
-    ufms = [ufm for ufms in ufm_dict.values() for ufm in ufms]
+    ctx = core.Context(
+        "/global/u2/j/jorlo/dev/LAT_Loading/ctxs/smurf_detsets_local.yaml"
+    )
+    ufms = [ufm for ufm, value in UXM_dict["low"].items() if value is not None]
 
     obs_lists = []
     for ufm in ufms:
