@@ -27,7 +27,7 @@ def _make_parser() -> ap.ArgumentParser:
         nargs="+",
         default=[
             "/global/cfs/cdirs/sobs/users/skh/data/beams/archive/lat_20260210/pointing_model_atm_relcal/",  # Nominal SO
-            "/global/cfs/cdirs/sobs/users/skh/data/beams/archive/lat_20260210/pointing_model_bs_relcal/",  # ASO
+            "/global/cfs/cdirs/sobs/users/skh/data/beams/lat/pointing_model_atm_relcal/",  # ASO
         ],
         help="Path to h5 file containing beam fits",
     )
@@ -90,7 +90,10 @@ if __name__ == "__main__":
 
     for i, aman in enumerate(amans):
         obs_id = obs_ids[i].split("_")[1]
-        ufm = stream_ids[i].split("_")[1]
+        if "ufm" in stream_ids[i]:
+            ufm = stream_ids[i].split("_")[1]
+        else:
+            ufm = stream_ids[i]
         band = bands[i][1:]
         ufm_type, ufm_band = keys_from_wafer(ufm, band)
 
