@@ -23,7 +23,7 @@ def get_saturn_temp(band: str):
     elif band == "040":
         # Revised planet brightness temperatures using the Planck/LFI 2018 data release, table 10, T_d,c Channel 44
         saturn_temp = 148.3
-    if band == "090":
+    elif band == "090":
         # Seven-Year Wilkinson Microwave Anisotropy Probe (WMAP1) Observations: Planets and Celestial Calibration Sources, table 9. Consistency with MF SATs. Effective bandcenter 93GHz for WMAP
         saturn_temp = 143.3
     elif band == "150":
