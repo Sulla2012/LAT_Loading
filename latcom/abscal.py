@@ -26,7 +26,6 @@ def _make_parser() -> ap.ArgumentParser:
         "-dd",
         nargs="+",
         default=[
-            "/global/cfs/cdirs/sobs/users/skh/data/beams/archive/lat_20260210/pointing_model_atm_relcal/",  # Nominal SO
             "/global/cfs/cdirs/sobs/users/skh/data/beams/lat/pointing_model_atm_relcal/",  # ASO
         ],
         help="Path to h5 file containing beam fits",
