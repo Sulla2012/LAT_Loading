@@ -1,7 +1,7 @@
 tags:
   basedir:  /global/cfs/cdirs/sobs/metadata/lat
   manifestdir: /global/cfs/cdirs/sobs/metadata/lat/manifests/
-  # relcaldir: /global/cfs/cdirs/sobs/users/twmorris/shared/lat/relcal/20260129/
+  relcaldir: /global/cfs/cdirs/sobs/users/twmorris/shared/lat/relcal/20260129/
   detmatchdir: /global/cfs/cdirs/sobs/metadata/lat/manifests/det_match/lat_det_match_260520m/
   focalplanedir: /global/cfs/cdirs/sobs/users/skh/data/pointing/lat/finalize_focal_plane/results/aso_prelim/
   preprocessdir: /global/cfs/cdirs/sobs/lat-iso/aso/v2/preprocessing/archives/
@@ -44,10 +44,10 @@ metadata:
     name: 'abscal'
     unpack:
     - abscal
-  # - db: '{relcaldir}/lat_relcal_20260129.sqlite'
-  #   label: relcal
-  #   unpack:
-  #   - relcal
+  - db: '{manifestdir}/relcal/lat_relcal_260804/db_local.sqlite'
+    label: relcal
+    unpack:
+    - relcal
   - db: '{preprocessdir}/process_archive.sqlite'
     label: preprocess
     unpack: preprocess

@@ -285,6 +285,9 @@ def get_nets(
                 net_flag = wafer_flag * (bp == 0)
             elif ufm_band == 2:
                 net_flag = wafer_flag * (bp == 1)
+            net_flag = net_flag * (meta.relcal.rel_factor_error < 0.1)
+
+            relcal = meta.relcal.rel_factor[net_flag]
 
             raw_cal = np.nanmedian(meta.abscal.raw_abscal_rj[net_flag])
             if "noise" in meta.preprocess:
@@ -294,8 +297,9 @@ def get_nets(
             else:
                 print(f"Error: no valid noise ken in {meta.preprocess.keys()}")
                 continue
+
             ndet = len(np.where(wnoise != 0)[0])
-            net_mes = 1 / np.sqrt(2) * wnoise * raw_cal
+            net_mes = 1 / np.sqrt(2) * wnoise * raw_cal * relcal
             factor = 1e6
             clean_nets = []
             for net in net_mes:

@@ -451,3 +451,17 @@ def load_amans(
     amans = np.array(amans)
 
     return amans, obs_ids[flags], stream_ids[flags], bands[flags]
+
+
+def bootstrap(cals: np.ndarray, samps: int = 1000) -> np.ndarray:
+    samples = np.zeros(samps)
+    rng = np.random.default_rng()
+    for i in range(len(samples)):
+        sample = rng.choice(cals, size=len(cals))
+        samples[i] = np.mean(sample)
+    return samples
+
+
+def bootstrap_err(cals: np.ndarray, q=[15.9, 84.1], samps: int = 1000) -> np.ndarray:
+    samples = bootstrap(cals, samps)
+    return np.percentile(samples, q)
