@@ -25,9 +25,7 @@ def _make_parser() -> ap.ArgumentParser:
         "--datadir",
         "-dd",
         nargs="+",
-        default=[
-            "/global/cfs/cdirs/sobs/users/skh/data/beams/lat/pointing_model_atm_relcal/",  # ASO
-        ],
+        default="/global/cfs/cdirs/sobs/users/skh/data/beams/lat/pointing_model_atm_relcal/",  # ASO
         help="Path to h5 file containing beam fits",
     )
 
@@ -40,7 +38,7 @@ def _make_parser() -> ap.ArgumentParser:
     parser.add_argument(
         "--skip_planets",
         "-sp",
-        default=[],
+        default=["saturn", "neptune"],
         help="List of planets to skip during abscal calculation.",
     )
     return parser
@@ -64,22 +62,9 @@ if __name__ == "__main__":
     # fpath = "/so/home/saianeesh/data/beams/lat_old/source_maps/pointing_model/fits/beam_pars.h5"
 
     # ASO path
-    data_dirs = args.datadir
-    if isinstance(data_dirs, list):
-        for i, data_dir in enumerate(data_dirs):
-            f = h5py.File(data_dir + "beam_pars.h5", mode="r")
-            if i == 0:
-                amans, obs_ids, stream_ids, bands = au.load_amans(f)
-            else:
-                cur_amans, cur_obs_ids, cur_stream_ids, cur_bands = au.load_amans(f)
-
-                amans = np.append(amans, cur_amans)
-                obs_ids = np.append(obs_ids, cur_obs_ids)
-                stream_ids = np.append(stream_ids, cur_stream_ids)
-                bands = np.append(bands, cur_bands)
-    else:
-        f = h5py.File(data_dirs + "beam_pars.h5", mode="r")
-        amans, obs_ids, stream_ids, bands = au.load_amans(f)
+    data_dir = args.datadir
+    f = h5py.File(data_dir + "beam_pars.h5", mode="r")
+    amans, obs_ids, stream_ids, bands = au.load_amans(f)
 
     cal_dict = {}
 
@@ -148,15 +133,14 @@ if __name__ == "__main__":
             continue
 
         subdir = obs_ids[i]
-        resid_name = subdir + "_ufm_" + ufm + "_f" + band + "_resid.fits"
-        for data_dir in data_dirs:
-            try:
-                resid_path = os.path.join(
-                    data_dir, planet, obs_id[:5], subdir, resid_name
-                )
-                rmse = mu.get_resid_rmse(resid_path, band)
-            except FileNotFoundError:
-                continue
+        resid_name = subdir + "_" + ufm + "_f" + band + "_full_resid.fits"
+        try:
+            resid_path = os.path.join(
+                data_dir, planet, obs_id[:5], subdir, resid_name
+            )
+            rmse = mu.get_resid_rmse(resid_path, band)
+        except FileNotFoundError:
+            continue
 
         # Third cut is on RMSE
         if rmse > 0.05:
