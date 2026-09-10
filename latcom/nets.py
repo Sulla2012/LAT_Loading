@@ -69,7 +69,8 @@ if __name__ == "__main__":
         )
         obs_id = str(obs["obs_id"])
         if cur_ot in lf_tubes:
-            obs_ctx_list.append((obs_id, "../ctxs/preprocess_lf_260604.yaml"))
+            continue  # Skip LF tubes for now
+            #            obs_ctx_list.append((obs_id, "../ctxs/preprocess_lf_260604.yaml"))
         else:
             if timestamp < dt.datetime(2026, 3, 1, tzinfo=ZoneInfo("UTC")):
                 obs_ctx_list.append((obs_id, "../ctxs/preprocess_nominal_260616.yaml"))

@@ -49,6 +49,9 @@ metadata:
     label: abscal
     unpack:
     - abscal
+  - db: '{manifestdir}/relcal/lat_relcal_260804/db_local.sqlite'
+    label: relcal
+    unpack: relcal
   #Standard Preproc
   # - db: '{manifestdir}/preprocess/lat_preprocess_cmb_240409m/process_archive_local.sqlite'
   #michael mccracken aso preproc

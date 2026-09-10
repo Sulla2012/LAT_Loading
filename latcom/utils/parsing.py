@@ -24,7 +24,7 @@ def parse_dict(net_dict: dict) -> pd.DataFrame:
     array_freqs = []
     arrays = []
 
-    ufms = sorted(net_dict.keys())[1:]  # remove index key
+    ufms = sorted(net_dict.keys())
 
     freqs = ["030", "040", "090", "150", "220", "280"]
 

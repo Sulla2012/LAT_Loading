@@ -125,9 +125,9 @@ def get_yield_stages(
     ndet = []
     stage_name = ["initial"]
 
-    for key in meta.preprocess.keys():
+    for key in meta.preprocess:
         try:
-            if "valid" in meta.preprocess[key].keys():
+            if "valid" in meta.preprocess[key]:
                 cur_ndet = len(
                     [
                         flag
@@ -307,14 +307,14 @@ def get_det_cal_cuts(meta: AxisManager) -> tuple[list[int], list[str]]:
     ncut = [0]
     cut_names = []
 
-    for key in meta.det_cal.keys():
+    for key in meta.det_cal:
         try:
             ncut = len(np.where(np.isnan(meta.det_cal[key][net_flag]))[0]) + len(
                 np.where(np.isnan(meta.det_cal[key][net_flag]))[0]
             )
             ncut.append(ncut)
             cut_names.append(key)
-        except:
+        except KeyError:
             continue
 
     return {cut_name: ncut for cut_name, ncut in zip(cut_names, ncut)}
