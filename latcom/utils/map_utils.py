@@ -14,7 +14,7 @@ from scipy.optimize import curve_fit
 from so3g import proj
 
 # os.environ["JBOLO_PATH"] = "/so/home/jorlo/dev/jbolo"
-# os.environ["JBOLO_MODELS_PATH"] = "/so/home/jorlo/dev/bolocalc-so-model"
+os.environ["JBOLO_MODELS_PATH"] = "/global/u2/j/jorlo/dev/bolocalc-so-model"
 
 sim_list = {
     "baseline": {

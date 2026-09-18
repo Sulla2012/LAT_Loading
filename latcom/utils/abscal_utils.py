@@ -8,6 +8,7 @@ import sotodlib.io.metadata as io_meta
 from astropy import constants as consts
 from sotodlib import core
 
+import latcom.utils.optical_loading as ol
 from latcom.utils import map_utils as mu
 
 
@@ -95,6 +96,7 @@ def make_results_dict(
                     "omega_data": [],
                     "source": [],
                     "time": [],
+                    "relcal": [],
                 },
                 "040": {
                     "cal": [],
@@ -109,6 +111,7 @@ def make_results_dict(
                     "omega_data": [],
                     "source": [],
                     "time": [],
+                    "relcal": [],
                 },
             }
         elif "090" in freq or "150" in freq:
@@ -126,6 +129,7 @@ def make_results_dict(
                     "omega_data": [],
                     "source": [],
                     "time": [],
+                    "relcal": [],
                 },
                 "150": {
                     "cal": [],
@@ -140,6 +144,7 @@ def make_results_dict(
                     "omega_data": [],
                     "source": [],
                     "time": [],
+                    "relcal": [],
                 },
             }
         else:
@@ -157,6 +162,7 @@ def make_results_dict(
                     "omega_data": [],
                     "source": [],
                     "time": [],
+                    "relcal": [],
                 },
                 "280": {
                     "cal": [],
@@ -171,6 +177,7 @@ def make_results_dict(
                     "omega_data": [],
                     "source": [],
                     "time": [],
+                    "relcal": [],
                 },
             }
     for key in cal_dict:
@@ -187,7 +194,7 @@ def make_results_dict(
         result_dict[ufm][freq]["omega_data"].append(cal_dict[key]["omega_data"])
         result_dict[ufm][freq]["source"].append(cal_dict[key]["source"])
         result_dict[ufm][freq]["time"].append(cal_dict[key]["time"])
-
+        result_dict[ufm][freq]["relcal"].append(cal_dict[key]["relcal"])
     return result_dict
 
 
@@ -220,6 +227,7 @@ def make_db(result_dict: dict) -> core.metadata.ManifestDb:
     raw_cals_cmb = []
     omegas = []
     obs = []
+    relcals = []
 
     freqs = ["030", "040", "090", "150", "220", "280"]
     ufms = sorted(result_dict.keys())
@@ -260,11 +268,13 @@ def make_db(result_dict: dict) -> core.metadata.ManifestDb:
                         data_ufms.append(ufm)
                         omegas.append(omega_data[j])
                         obs.append(cur_obs[j][9:])
+                        relcals.append(sub_dict[sub_key]["relcal"][j])
 
     data_freqs = np.array(data_freqs)
     data_ufms = np.array(data_ufms)
     cals = np.array(cals)
     raw_cals = np.array(raw_cals)
+    relcals = np.array(relcals)
     obs = np.array(obs, dtype=float)
 
     df = pd.DataFrame(
@@ -277,6 +287,7 @@ def make_db(result_dict: dict) -> core.metadata.ManifestDb:
             "raw_cals_cmb": raw_cals_cmb,
             "omegas": omegas,
             "obs": obs,
+            "relcals": relcals,
         }
     )
     lfs = ["030", "040"]
@@ -323,14 +334,17 @@ def make_db(result_dict: dict) -> core.metadata.ManifestDb:
                         & (df.obs >= lat_times[key]["start"])
                         & (df.obs <= lat_times[key]["stop"])
                     )
+                cal, raw_cal, cal_cmb, raw_cal_cmb = compute_abscals(
+                    ufm_df=cur_df, full_df=df
+                )
                 data.append(
                     (
                         "ufm_" + str(ufm),
                         "f" + str(freq),
-                        float(np.nanmean(cur_df.cals)),
-                        float(np.nanmean(cur_df.raw_cals)),
-                        float(np.nanmean(cur_df.cals_cmb)),
-                        float(np.nanmean(cur_df.raw_cals_cmb)),
+                        cal,
+                        raw_cal,
+                        cal_cmb,
+                        raw_cal_cmb,
                         float(np.nanmean(cur_df.omegas)),
                     )
                 )
@@ -409,6 +423,80 @@ def make_db(result_dict: dict) -> core.metadata.ManifestDb:
     return db
 
 
+def get_aso_abscal(ot: str, full_df: pd.DataFrame) -> tuple[float, float, float, float]:
+    """
+    Get the abscals for a given ASO tube.
+
+    Parameters
+    ----------
+    ot : str
+        The ASO tube to get abscals for.
+    full_df : pd.DataFrame
+        Dataframe of observations for the full dataset.
+
+    Returns
+    -------
+    cal : float
+        The abscal in K/pW.
+    raw_cal : float
+        The raw abscal in K/pW.
+    cal_cmb : float
+        The abscal in K_CMB/pW.
+    raw_cal_cmb : float
+        The raw abscal in K_CMB/pW.
+    """
+    ufm_list = ol.ufm_dict[ot]
+    ufm_df = full_df.where(full_df.ufms.isin(ufm_list))
+    cal = np.nanmean(ufm_df.cals * ufm_df.relcals)
+    raw_cal = np.nanmean(ufm_df.raw_cals * ufm_df.relcals)
+    cal_cmb = np.nanmean(ufm_df.cals_cmb * ufm_df.relcals)
+    raw_cal_cmb = np.nanmean(ufm_df.raw_cals_cmb * ufm_df.relcals)
+    return cal, raw_cal, cal_cmb, raw_cal_cmb
+
+
+def compute_abscals(
+    ufm_df: pd.DataFrame, full_df: pd.DataFrame
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Compute the abscals for a given dataframe of observations.
+
+    Parameters
+    ----------
+    ufm_df : pd.DataFrame
+        Dataframe of observations for a given ufm and freq.
+    full_df : pd.DataFrame
+        Dataframe of observations for the full dataset.
+
+    Returns
+    -------
+    cals : np.ndarray
+        Array of abscals in K/pW.
+    raw_cals : np.ndarray
+        Array of raw abscals in K/pW.
+    cals_cmb : np.ndarray
+        Array of abscals in K_CMB/pW.
+    raw_cals_cmb : np.ndarray
+        Array of raw abscals in K_CMB/pW.
+    """
+    if ufm_df.ufms[0] in ol.aso_tubes:
+        ot = ol.ot_from_ufm(ufm_df.ufms[0])
+        ot_cal, ot_raw_cal, ot_cal_cmb, ot_raw_cal_cmb = get_aso_abscal(ot, full_df)
+        cal = ot_cal / np.nanmean(ufm_df.relcals)
+        raw_cal = ot_raw_cal / np.nanmean(ufm_df.relcals)
+        cal_cmb = ot_cal_cmb / np.nanmean(ufm_df.relcals)
+        raw_cal_cmb = ot_raw_cal_cmb / np.nanmean(ufm_df.relcals)
+
+    else:
+        # For the nominal SO tubes we have enough per ufm
+        # data that we can just use the mean
+        cal = float(np.nanmean(ufm_df.cals))
+        raw_cal = float(np.nanmean(ufm_df.raw_cals))
+        cal_cmb = float(np.nanmean(ufm_df.cals_cmb))
+        raw_cal_cmb = float(np.nanmean(ufm_df.raw_cals_cmb))
+
+    return cal, raw_cal, cal_cmb, raw_cal_cmb
+
+
 def load_amans(
     f: h5py.File,
 ) -> tuple[
@@ -462,6 +550,75 @@ def bootstrap(cals: np.ndarray, samps: int = 1000) -> np.ndarray:
     return samples
 
 
-def bootstrap_err(cals: np.ndarray, q=[15.9, 84.1], samps: int = 1000) -> np.ndarray:
+def bootstrap_err(cals: np.ndarray, q=None, samps: int = 1000) -> np.ndarray:
+    if q is None:
+        q = [15.9, 84.1]
     samples = bootstrap(cals, samps)
     return np.percentile(samples, q)
+
+
+def get_ufm_band(band: str) -> int:
+    """
+    Get the ufm band from the band string.
+
+    Parameters
+    ----------
+    band : str
+        The band string, e.g. "f030", "f040", etc.
+
+    Returns
+    -------
+    ufm_band : int
+        The ufm band, 1 for LF, 2 for MF, 3 for UHF.
+
+    Raises
+    ------
+    ValueError
+        If the band string is not recognized.
+    """
+    if band in ["030", "090", "220"]:
+        return 1
+    elif band in ["040", "150", "280"]:
+        return 2
+    else:
+        raise ValueError(
+            f"Band {band} not recognized. Must be one of 030, 040, 090, 150, 220, 280."
+        )
+
+
+def get_relcal(meta: core.AxisManager, ufm: str, band: str) -> float:
+    """
+    Get the relcal for a given observation, ufm, and frequency.
+
+    Parameters
+    ----------
+    meta : AxisManager
+        The metadata containing preprocessing information.
+    ufm : str
+        The ufm ID to get relcal for.
+    band : str
+        The frequency band to get relcal for.
+
+    Returns
+    -------
+    relcal : float
+        The relcal for the given observation, ufm, and frequency, averaged over all dets.
+    """
+    wafer_flag = np.array([ufm in ufms for ufms in meta.det_info.stream_id])
+
+    if len(wafer_flag) == 0:
+        print(f"No relcal info for obs {meta.obs_info.obs_id}, ufm {ufm}, band {band}")
+        return np.nan
+
+    ufm_band = get_ufm_band(band)
+
+    bp = (meta.det_cal.bg % 4) // 2
+
+    if ufm_band == 1:
+        net_flag = wafer_flag * (bp == 0)
+    elif ufm_band == 2:
+        net_flag = wafer_flag * (bp == 1)
+    net_flag = net_flag * (meta.relcal.rel_factor_error < 0.1)
+
+    relcal = meta.relcal.rel_factor[net_flag]
+    return np.nanmean(relcal)
