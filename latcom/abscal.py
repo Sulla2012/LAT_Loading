@@ -68,9 +68,7 @@ if __name__ == "__main__":
 
     cal_dict = {}
 
-    ctx = core.Context(
-        "/global/cfs/cdirs/sobs/metadata/lat/contexts/smurf_detsets_local.yaml"
-    )
+    ctx = core.Context("../ctxs/abscal_ctx_09242026.yaml")
 
     for i, aman in enumerate(amans):
         obs_id = obs_ids[i].split("_")[1]
@@ -135,9 +133,7 @@ if __name__ == "__main__":
         subdir = obs_ids[i]
         resid_name = subdir + "_" + ufm + "_f" + band + "_full_resid.fits"
         try:
-            resid_path = os.path.join(
-                data_dir, planet, obs_id[:5], subdir, resid_name
-            )
+            resid_path = os.path.join(data_dir, planet, obs_id[:5], subdir, resid_name)
             rmse = mu.get_resid_rmse(resid_path, band)
         except FileNotFoundError:
             continue
@@ -218,7 +214,7 @@ if __name__ == "__main__":
             continue  # Some of the saturn observations are accidentally of Neptune, leading to very high abscals (when using Saturn temp)
             # Matt is working on a real fix but for now since the Neptune amp is >10x lower, a cut on the abscal is safe
 
-        relcal = au.get_relcal(meta=meta, cur_wafer=ufm, ufm_band=band)
+        relcal = au.get_relcal(meta=meta, ufm=ufm, band=band)
 
         cal_dict[str(ufm) + "_" + str(band) + "_" + str(obs_id)] = {
             "adj_cal": cal_factor,
