@@ -14,7 +14,7 @@ dependencies = [
     "dill",
     "h5py",
     "matplotlib",
-    "mars_model @ git+https://github.com/Sulla2012/mars_model",
+    "marsmodel @ git+https://github.com/Sulla2012/mars_model",
     "numpy",
     "pandas",
     "pixell",
