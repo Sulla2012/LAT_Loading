@@ -446,11 +446,11 @@ def get_aso_abscal(ot: str, full_df: pd.DataFrame) -> tuple[float, float, float,
         The raw abscal in K_CMB/pW.
     """
     ufm_list = ol.ufm_dict[ot]
-    ufm_df = full_df.where(full_df.ufms.isin(ufm_list))
-    cal = np.nanmean(ufm_df.cals * ufm_df.relcals)
-    raw_cal = np.nanmean(ufm_df.raw_cals * ufm_df.relcals)
-    cal_cmb = np.nanmean(ufm_df.cals_cmb * ufm_df.relcals)
-    raw_cal_cmb = np.nanmean(ufm_df.raw_cals_cmb * ufm_df.relcals)
+    ot_df = full_df.where(full_df.ufms.isin(ufm_list))
+    cal = np.nanmean(ot_df.cals * ot_df.relcals)
+    raw_cal = np.nanmean(ot_df.raw_cals * ot_df.relcals)
+    cal_cmb = np.nanmean(ot_df.cals_cmb * ot_df.relcals)
+    raw_cal_cmb = np.nanmean(ot_df.raw_cals_cmb * ot_df.relcals)
     return cal, raw_cal, cal_cmb, raw_cal_cmb
 
 
