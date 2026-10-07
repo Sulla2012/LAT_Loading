@@ -40,7 +40,7 @@ def _make_parser() -> ap.ArgumentParser:
         "-e",
         type=lambda d: dt.datetime.strptime(d, "%Y-%m-%d").astimezone(dt.timezone.utc),
         default="2027-01-01",
-        help="Start time for obs",
+        help="End time for obs",
     )
     return parser
 
@@ -59,14 +59,19 @@ if __name__ == "__main__":
 
     obs_ctx_list = []
     for i, obs in enumerate(obs_list):
-        ot = str(obs["obs_id"]).split("_")[2][3:]
+        cur_ot = str(obs["obs_id"]).split("_")[2][3:]
+        timestamp = dt.datetime.fromtimestamp(
+            int(obs["obs_id"].split("_")[1]), tz=ZoneInfo("UTC")
+        )
         obs_id = str(obs["obs_id"])
-        if ot in so_nominal_tubes:
-            obs_ctx_list.append((obs_id, args.ctx_path + "/preprocess_nominal.yaml"))
-        elif ot in aso_tubes:
-            obs_ctx_list.append((obs_id, args.ctx_path + "/preprocess.yaml"))
-        elif ot in lf_tubes:
-            obs_ctx_list.append((obs_id, args.ctx_path + "/preprocess_lf.yaml"))
+        if cur_ot in lf_tubes:
+            continue  # Skip LF tubes for now
+            #            obs_ctx_list.append((obs_id, "../ctxs/preprocess_lf_260604.yaml"))
+        else:
+            if timestamp < dt.datetime(2026, 3, 1, tzinfo=ZoneInfo("UTC")):
+                obs_ctx_list.append((obs_id, "../ctxs/preprocess_nominal_260616.yaml"))
+            else:
+                obs_ctx_list.append((obs_id, "../ctxs/preprocess_260604.yaml"))
 
     with multiprocessing.Pool() as pool:
         driver_func = partial(

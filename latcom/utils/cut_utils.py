@@ -284,37 +284,3 @@ def get_det_bias_cuts(meta: AxisManager) -> tuple[list[int], list[str]]:
     )
 
     return cut_sources
-
-
-def get_det_cal_cuts(meta: AxisManager) -> tuple[list[int], list[str]]:
-    """
-    Get the number of dets with bad det cal
-    stemming from different sources. Dets
-    are considered to have bad det cal if the
-    value of the corresponding parameter is nan
-    or 0.
-
-    Parameters
-    ----------
-    meta : AxisManager
-        The metadata containing detector calibration information.
-
-    Returns
-    -------
-    cut_sources : dict[str, float]
-        The number of cuts and their corresponding names.
-    """
-    ncut = [0]
-    cut_names = []
-
-    for key in meta.det_cal:
-        try:
-            ncut = len(np.where(np.isnan(meta.det_cal[key][net_flag]))[0]) + len(
-                np.where(np.isnan(meta.det_cal[key][net_flag]))[0]
-            )
-            ncut.append(ncut)
-            cut_names.append(key)
-        except KeyError:
-            continue
-
-    return {cut_name: ncut for cut_name, ncut in zip(cut_names, ncut)}
