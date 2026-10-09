@@ -1,6 +1,7 @@
 import os
 
 import astropy.units as u
+import dill as pk
 import h5py
 import numpy as np
 import pandas as pd
@@ -9,7 +10,10 @@ from astropy import constants as consts
 from sotodlib import core
 
 import latcom.utils.optical_loading as ol
+from latcom.bands.bands import bandwidths
+from latcom.planet_models.core import get_planet_temp
 from latcom.utils import map_utils as mu
+from latcom.utils.optical_loading import keys_from_wafer
 
 
 def data_to_cal_factor(
@@ -622,3 +626,96 @@ def get_relcal(meta: core.AxisManager, ufm: str, band: str) -> float:
 
     relcal = meta.relcal.rel_factor[net_flag]
     return np.nanmean(relcal)
+
+
+def get_single_abscal(
+    amp: float,
+    planet: str,
+    timestamp: str,
+    band: str,
+    ufm: str,
+    el_obs: float,
+    solid_angle: float,
+    pwv_obs: float,
+) -> tuple[float, float, float, float] | None:
+    """
+    Get the abscal for a single observation.
+
+    Parameters
+    ----------
+    amp : float
+        The amplitude of the abscal fit, in pW.
+    planet : str
+        Planet that this abscal is computed from.
+    timestamp : str
+        Time of observation
+    band : str
+        The band for which to get the temperature.
+    ufm : str
+        The ufm associated with the abscal.
+    el_obs : float
+        Elevation of observation.
+    solid_angle : float
+        Beam solid angle in SR.
+    pwv_obs : float
+        PWV of obs.
+    """
+    fiducial_pwv = 1  # mm
+    with open("../data/atmosphere_eff.pk", "rb") as f:
+        atmosphere_eff = pk.load(f)
+    planet_temp = get_planet_temp(planet=planet, obs_id=timestamp, band=band, ufm=ufm)
+    if planet_temp is None:
+        return None, None, None, None
+    # Get pwv/el adjustment
+    pwv_idx = np.where(
+        np.array([np.abs(pwv - fiducial_pwv) < 0.1 for pwv in atmosphere_eff["pwv"]])
+    )[0]
+
+    if el_obs > 90:
+        el_obs = 180 - el_obs
+
+    obs_idx_pwv = np.where(
+        np.isclose(
+            np.abs(atmosphere_eff["pwv"] - pwv_obs),
+            np.min(np.abs(atmosphere_eff["pwv"] - pwv_obs)),
+        )
+    )[0][0]
+    try:
+        obs_key_el = [
+            el for el in atmosphere_eff["LF"]["LF_1"] if np.abs(int(el) - el_obs) < 2.5
+        ][0]
+
+    except IndexError:
+        return None, None, None, None
+    # Adjust the amplitude for the pwv
+    el_key = "50"  # hardcoded fiducial observation idx. TODO: Double check this is up-to-date
+
+    ufm_type, ufm_band = keys_from_wafer(ufm, band)
+    t_atm_obs = atmosphere_eff[ufm_type][ufm_band][obs_key_el][obs_idx_pwv]
+    t_atm_fiducial = atmosphere_eff[ufm_type][ufm_band][el_key][pwv_idx]
+    pwv_adjust = t_atm_fiducial / t_atm_obs
+
+    adjusted_amplitude = amp * pwv_adjust[0]
+
+    planet_diameter = mu.get_planet_diameter(
+        int(timestamp), planet.capitalize()
+    )  # arcsec, we are using exact temperatures
+
+    # By default we use the pwv/sin(el) adjusted abscals, but I want to save/keep the
+    # unadjusted ones as well
+    abscal, opt_eff = data_to_cal_factor(
+        p_meas=adjusted_amplitude,
+        beam_solid_angle=solid_angle,
+        planet_diameter=planet_diameter,
+        bandwidth=bandwidths[ufm][band],
+        planet_temp=planet_temp,
+    )
+    raw_abscal, raw_opt_eff = data_to_cal_factor(
+        p_meas=amp,
+        beam_solid_angle=solid_angle,
+        planet_diameter=planet_diameter,
+        bandwidth=bandwidths[ufm][band],
+        planet_temp=planet_temp,
+    )
+
+    return abscal, opt_eff, raw_abscal, raw_opt_eff
