@@ -10,8 +10,6 @@ from astropy import units as u
 from sotodlib import core
 from sotodlib.core.metadata.loader import LoaderError
 
-from latcom.bands.bands import bandwidths
-from latcom.planet_models.core import get_planet_temp
 from latcom.utils import abscal_utils as au
 from latcom.utils import map_utils as mu
 from latcom.utils.optical_loading import keys_from_wafer, pwv_interp
@@ -126,10 +124,6 @@ if __name__ == "__main__":
         if planet in args.skip_planets:
             continue
 
-        planet_temp = get_planet_temp(planet=planet, obs_id=obs_id, band=band, ufm=ufm)
-        if planet_temp is None:
-            continue
-
         subdir = obs_ids[i]
         resid_name = subdir + "_" + ufm + "_f" + band + "_full_resid.fits"
         try:
@@ -142,13 +136,6 @@ if __name__ == "__main__":
         if rmse > 0.05:
             print(f"RMSE = {rmse} > 0.05")
             continue
-
-        # Get pwv/el adjustment
-        pwv_idx = np.where(
-            np.array(
-                [np.abs(pwv - fiducial_pwv) < 0.1 for pwv in atmosphere_eff["pwv"]]
-            )
-        )[0]
 
         try:
             pwv_obs = pwv(obs_id)
@@ -163,68 +150,35 @@ if __name__ == "__main__":
         # now load the metadata after cuts
         meta = ctx.get_meta(obs_ids[i])
         el_obs = meta.obs_info.el_center
-        if el_obs > 90:
-            el_obs = 180 - el_obs
 
-        # Convert from actual observed el to the nominal el of observation used in the effective atmosphere dict
-        obs_idx_pwv = np.where(
-            np.isclose(
-                np.abs(atmosphere_eff["pwv"] - pwv_obs),
-                np.min(np.abs(atmosphere_eff["pwv"] - pwv_obs)),
-            )
-        )[0][0]
-        try:
-            obs_key_el = [
-                el
-                for el in atmosphere_eff["LF"]["LF_1"]
-                if np.abs(int(el) - el_obs) < 2.5
-            ][0]
-
-        except IndexError:
-            print(f"El {el_obs} for obs {obs_ids[i]} out of range")
+        abscal, opt_eff, raw_abscal, raw_opt_eff = au.get_single_abscal(
+            amp=amp,
+            planet=planet,
+            timestamp=obs_id,
+            band=band,
+            ufm=ufm,
+            el_obs=el_obs,
+            solid_angle=data_solid_angle,
+            pwv_obs=pwv_obs,
+        )
+        if abscal is None:
             continue
 
-        # Adjust the amplitude for the pwv
-        t_atm_obs = atmosphere_eff[ufm_type][ufm_band][obs_key_el][obs_idx_pwv]
-        t_atm_fiducial = atmosphere_eff[ufm_type][ufm_band][el_key][pwv_idx]
-        pwv_adjust = t_atm_fiducial / t_atm_obs
-
-        adjusted_amplitude = amp * pwv_adjust[0]
-
-        planet_diameter = mu.get_planet_diameter(
-            int(obs_id), planet.capitalize()
-        )  # arcsec, we are using exact temperatures
-
-        cal_factor, cal_opt_efc = au.data_to_cal_factor(
-            p_meas=adjusted_amplitude,
-            beam_solid_angle=data_solid_angle,
-            planet_diameter=planet_diameter,
-            bandwidth=bandwidths[ufm][band],
-            planet_temp=planet_temp,
-        )
-        raw_factor, raw_opt_efc = au.data_to_cal_factor(
-            p_meas=amp,
-            beam_solid_angle=data_solid_angle,
-            planet_diameter=planet_diameter,
-            bandwidth=bandwidths[ufm][band],
-            planet_temp=planet_temp,
-        )
-
-        if raw_factor >= 40 and planet == "saturn":
+        if raw_abscal >= 40 and planet == "saturn":
             continue  # Some of the saturn observations are accidentally of Neptune, leading to very high abscals (when using Saturn temp)
             # Matt is working on a real fix but for now since the Neptune amp is >10x lower, a cut on the abscal is safe
 
         relcal = au.get_relcal(meta=meta, ufm=ufm, band=band)
 
         cal_dict[str(ufm) + "_" + str(band) + "_" + str(obs_id)] = {
-            "adj_cal": cal_factor,
-            "raw_cal": raw_factor,
+            "adj_cal": abscal,
+            "raw_cal": raw_abscal,
             "pwv": pwv_obs,
             "el": el_obs,
             "omega_data": data_solid_angle,
             "fwhm": fitted_fwhm,
-            "raw_opt": raw_opt_efc,
-            "cal_opt": cal_opt_efc,
+            "raw_opt": raw_opt_eff,
+            "cal_opt": opt_eff,
             "source": planet,
             "time": obs_id,
             "relcal": relcal,
