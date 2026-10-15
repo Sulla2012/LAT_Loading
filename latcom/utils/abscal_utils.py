@@ -59,6 +59,14 @@ beam_volume_cuts = {
     "280": [1e-8, 2e-7],
 }
 
+flavor_dict = {
+    "030": "LF_1",
+    "040": "LF_2",
+    "090": "MF_1",
+    "150": "MF_2",
+    "220": "UHF_1",
+    "280": "UHF_2",
+}
 
 def make_results_dict(
     cal_dict: dict,
@@ -235,15 +243,6 @@ def make_db(result_dict: dict) -> core.metadata.ManifestDb:
 
     freqs = ["030", "040", "090", "150", "220", "280"]
     ufms = sorted(result_dict.keys())
-
-    flavor_dict = {
-        "030": "LF_1",
-        "040": "LF_2",
-        "090": "MF_1",
-        "150": "MF_2",
-        "220": "UHF_1",
-        "280": "UHF_2",
-    }
 
     for freq in freqs:
         temp_conv = mu.temp_conv(
@@ -720,3 +719,41 @@ def get_single_abscal(
     )
 
     return abscal, opt_eff, raw_abscal, raw_opt_eff
+
+def get_abscals_from_perobs(abscal_perobs: core.metadata.ResultSet) -> tuple[float, float, float, float]:
+    """
+    Get the abscals from a ResultSet of per observation abscals.
+
+    Parameters
+    ----------
+    abscal_perobs : core.metadata.ResultSet
+        ResultSet containing per observation abscals.
+
+    Returns
+    -------
+    abscal_rj : float
+        The per observation abscal.
+    raw_abscal_rj : float
+        The per observation raw abscal.
+    abscal_cmb : float
+        The per observation abscal to Kcmb.
+    raw_abscal_cmb : float
+        The per observation raw abscal to Kcmb.
+    """
+    abscal_perobs = abscal_perobs.to_pandas()
+    abscal_rj = abscal_perobs["abscal"]
+    raw_abscal_rj = abscal_perobs["raw_abscal_rj"]
+    abscal_cmb = np.zeros_like(abscal_rj)
+    raw_abscal_cmb = np.zeros_like(abscal_rj)
+    for i in range(len(abscal_perobs)):
+        band = abscal_perobs["band"][i]
+        temp_conv = mu.temp_conv(
+            T_B=2.725 * u.Kelvin,
+            flavor=flavor_dict[band].split("_")[0],
+            ch=flavor_dict[band],
+            kind="baseline",
+        ) 
+        abscal_cmb[i] = abscal_rj * temp_conv
+        raw_abscal_cmb[i] = raw_abscal_rj * temp_conv
+ 
+    return abscal_rj, raw_abscal_rj, abscal_cmb, raw_abscal_cmb
