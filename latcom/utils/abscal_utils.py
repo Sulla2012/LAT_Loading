@@ -637,6 +637,7 @@ def get_single_abscal(
     el_obs: float,
     solid_angle: float,
     pwv_obs: float,
+    atmosphere_eff: dict,
 ) -> tuple[float, float, float, float] | None:
     """
     Get the abscal for a single observation.
@@ -659,10 +660,10 @@ def get_single_abscal(
         Beam solid angle in SR.
     pwv_obs : float
         PWV of obs.
+    atmosphere_eff : dict  
+        Dictionary which gives atm efficiency modification for pwv/el.
     """
     fiducial_pwv = 1  # mm
-    with open("../data/atmosphere_eff.pk", "rb") as f:
-        atmosphere_eff = pk.load(f)
     planet_temp = get_planet_temp(planet=planet, obs_id=timestamp, band=band, ufm=ufm)
     if planet_temp is None:
         return None, None, None, None

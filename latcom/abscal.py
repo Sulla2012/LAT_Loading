@@ -160,6 +160,7 @@ if __name__ == "__main__":
             el_obs=el_obs,
             solid_angle=data_solid_angle,
             pwv_obs=pwv_obs,
+            atmosphere_eff=atmosphere_eff,
         )
         if abscal is None:
             continue
