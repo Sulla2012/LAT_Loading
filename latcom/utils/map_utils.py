@@ -53,12 +53,6 @@ n_wafers = {
     "UHF_2": 2 * 3,
 }
 
-rad_to_arcsec = (180 * 3600) / np.pi
-rad_to_arcmin = (180 * 60) / np.pi
-rad_to_deg = 180 / np.pi
-
-so3gsite = proj.coords.SITES["so"]
-site = so3gsite.ephem_observer()
 
 
 def get_matching_obs(
@@ -503,22 +497,6 @@ def fit_gauss_pointing(imap, ivar, pixmap, make_plots=True):
         popt,
         pcov,
     )
-
-
-def get_planet_diameter(obs_id, planet):
-    """get angular diameter (in ARCSEC) of a planet from obs id"""
-    timestamp = int(obs_id)
-    date = dt.datetime.fromtimestamp(timestamp, tz=ZoneInfo("UTC"))
-    site.date = ephem.Date(date)
-    saturn = getattr(ephem, planet)(site)
-    dia = saturn.size
-    return dia
-
-
-def angular_diameter_to_solid_angle(angular_diameter):
-    """Angular diameter is in ARCSEC"""
-    return 2 * np.pi * (1 - np.cos(np.deg2rad(angular_diameter / 3600) / 2))
-
 
 def get_pwv_obs(obs_id, pwv_data, n_hours_before, n_hours_after):
     ## factor needed to get the maps at 1 mm PWV

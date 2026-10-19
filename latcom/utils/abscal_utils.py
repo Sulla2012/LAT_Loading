@@ -1,4 +1,7 @@
+import datetime as dt
 import os
+from sqlite3 import Time
+from zoneinfo import ZoneInfo
 
 import astropy.units as u
 import dill as pk
@@ -7,6 +10,8 @@ import numpy as np
 import pandas as pd
 import sotodlib.io.metadata as io_meta
 from astropy import constants as consts
+from astropy.table import Table
+from astropy.time import Time
 from sotodlib import core
 
 import latcom.utils.optical_loading as ol
@@ -14,20 +19,6 @@ from latcom.bands.bands import bandwidths
 from latcom.planet_models.core import get_planet_temp
 from latcom.utils import map_utils as mu
 from latcom.utils.optical_loading import keys_from_wafer
-
-
-def data_to_cal_factor(
-    p_meas, beam_solid_angle, planet_diameter, bandwidth, planet_temp
-):
-    fiducial_solid_angle = mu.angular_diameter_to_solid_angle(planet_diameter)
-
-    fill_factor = fiducial_solid_angle / (beam_solid_angle)
-    t_eff_planet = planet_temp * fill_factor
-    cal_factor = t_eff_planet / p_meas  # K -> pW
-
-    opt_eff = ((1 / (cal_factor) * u.pW / u.K) / (consts.k_B * bandwidth * u.GHz)).to(1)
-
-    return cal_factor, opt_eff
 
 
 # Uniform +/- 20% from nominal. TODO: Make the percentage offset a variable
@@ -67,6 +58,141 @@ flavor_dict = {
     "220": "UHF_1",
     "280": "UHF_2",
 }
+
+rad_to_arcsec = (180 * 3600) / np.pi
+rad_to_arcmin = (180 * 60) / np.pi
+rad_to_deg = 180 / np.pi
+
+#so3gsite = proj.coords.SITES["so"]
+#site = so3gsite.ephem_observer()
+
+EPH_PATH = '/global/u2/j/jorlo/dev/LAT_Loading/data/JPL_ephem.fits'
+_cached_eph_table = None
+
+################################################################
+# Functions to get cal factor                                  #
+################################################################
+
+def data_to_cal_factor(
+    p_meas: float, omega_beam: float, omega_planet: float, bandwidth: float, planet_temp: float
+):
+    fill_factor = omega_planet / (omega_beam)
+    t_eff_planet = planet_temp * fill_factor
+    cal_factor = t_eff_planet / p_meas  # K -> pW
+
+    opt_eff = ((1 / (cal_factor) * u.pW / u.K) / (consts.k_B * bandwidth * u.GHz)).to(1)
+
+    return cal_factor, opt_eff
+
+def get_planet_diameter(obs_id, planet):
+    """
+    Get angular diameter (in ARCSEC) of a planet from obs id.
+    Depreciated in favor of get_jpl_planet_omega, which uses 
+    JPL Horizons ephemerides to get the solid angle of the planet.
+    """
+    raise DeprecationWarning(
+        "get_planet_diameter is depreciated. Use get_jpl_planet_omega instead."
+    )
+    timestamp = int(obs_id)
+    date = dt.datetime.fromtimestamp(timestamp, tz=ZoneInfo("UTC"))
+    site.date = ephem.Date(date)
+    saturn = getattr(ephem, planet)(site)
+    dia = saturn.size
+    return dia
+
+def interp_JPL_Horizons(
+        planet: str, ctimes: np.ndarray, eph: Table, cols: tuple = ('ang_width', 'delta', 'PDObsLat')
+    ):
+    '''
+    arguments:
+    eph: loaded astropy Table fits file (database for the ephemerides)
+    planet: either saturn or jupiter
+    ctimes: array of unix timestamps
+    cols: names of Horizons.ephemerides() columns desired for query
+
+    returns:
+    ephem_dict: dictionary of ephemerides data, interpolated to the input ctimes
+    '''
+    tab = eph[eph['planet'] == planet]
+    tab.sort('ctime')
+    ephem_dict = {}
+    for c in cols:
+        y = np.asarray(tab[c], dtype=float)
+        # unwrap so 359.9 -> 0.1 doesn't blow up
+        if c == 'RA':                      
+            y = np.rad2deg(np.unwrap(np.deg2rad(y)))
+        ephem_dict[c] = np.interp(ctimes, tab['ctime'], y)
+    if 'RA' in cols:
+        ephem_dict['RA'] = np.mod(ephem_dict['RA'], 360.0)
+    return ephem_dict
+
+def get_jpl_planet_omega(planet: str, ctime:float, eph_path:str=EPH_PATH):
+    """
+    Get omega_planet using JPL Horizons Ephemerides:
+
+    Parameters
+    ----------
+    eph_path : str
+        Path to astropy Table fits file with database for the JPL Horizons ephemerides. 
+        Ephemerides database consists of samples every 20 minutes,
+        so interpolation is needed to access the data at the exact ctime argument provided
+    planet : str
+        Planet to get solid angle for.
+    ctime : float
+        Unix timestamp for evaluation of the ephemerides data. 
+
+    Returns
+    -------
+    omega_planet : float
+        Planet solid angle in [sr]
+
+    Raises
+    ------
+    ValueError 
+        If the planet argument is not one of jupiter, saturn, mars, uranus, or neptune.
+    """
+    #jpl ephemeris, cache it so we don't keep loading it.
+    global _cached_eph_table
+    if _cached_eph_table is None:
+        eph = Table.read(eph_path)
+        eph['ctime'] = Time(eph['datetime_jd'], format='jd', scale='utc').unix
+        _cached_eph_table = eph
+    else:
+        eph = _cached_eph_table
+
+    if planet == 'jupiter':
+        r_pol = 66854 #km, from Weiland et al. 2011
+        r_eq = 71492 #km
+    elif planet == 'saturn':
+        r_pol = 54364
+        r_eq = 60268
+    elif planet == 'mars':
+        r_pol = 3376.2 #From nssdc fact sheet:
+        r_eq = 3396.2 # https://nssdc.gsfc.nasa.gov/planetary/factsheet/marsfact.html
+    elif planet == 'uranus':
+        r_pol = 24973 #From nssdc fact sheet:
+        r_eq = 25559 # https://nssdc.gsfc.nasa.gov/planetary/factsheet/uranusfact.html
+    elif planet == 'neptune':
+        r_pol = 24341 #From nssdc fact sheet:
+        r_eq = 24764 # https://nssdc.gsfc.nasa.gov/planetary/factsheet/neptunefact.html
+
+    else:
+        raise ValueError(f"Planet {planet} not recognized. Must be one of jupiter, saturn, mars, uranus, or Neptune")
+
+    jpl_ephem = interp_JPL_Horizons(eph=eph, planet=planet, ctimes=ctime, cols=('ang_width', 'delta','PDObsLat'))
+    Dw = np.deg2rad(jpl_ephem['PDObsLat']) #planetodetic lattiude, where center of observed disk is relative to the equatorial plane of the planet
+    planet_distance = jpl_ephem['delta'] #Earth--> planet distance
+
+    def get_rproj(r_pol, r_eq, Dw):
+        return r_pol * np.sqrt(np.cos(Dw)**2 + (r_eq/r_pol)**2 * np.sin(Dw)**2) #from planck LII intermediate results, WMAP Weiland 2011 also has this formula but accidentally flips r_eq and r_pol in the ratio in the sqrt()
+
+    rproj = get_rproj(r_pol=r_pol,r_eq=r_eq,Dw=Dw) #projected polar radius along line of site to planet (correcting for time-dependent changes to planet oblateness)
+    omega_planet = (np.pi*r_eq*rproj/(planet_distance*1.495978707e8)**2) #planck LII formula, planet distance naturally in AU, converted to km
+    return omega_planet
+
+def angular_diameter_to_solid_angle(angular_diameter):
+    """Angular diameter is in ARCSEC"""
+    return 2 * np.pi * (1 - np.cos(np.deg2rad(angular_diameter / 3600) / 2))
 
 def make_results_dict(
     cal_dict: dict,
@@ -634,7 +760,7 @@ def get_single_abscal(
     band: str,
     ufm: str,
     el_obs: float,
-    solid_angle: float,
+    omega_beam: float,
     pwv_obs: float,
     atmosphere_eff: dict,
 ) -> tuple[float, float, float, float] | None:
@@ -655,7 +781,7 @@ def get_single_abscal(
         The ufm associated with the abscal.
     el_obs : float
         Elevation of observation.
-    solid_angle : float
+    omega_beam : float
         Beam solid angle in SR.
     pwv_obs : float
         PWV of obs.
@@ -697,23 +823,23 @@ def get_single_abscal(
 
     adjusted_amplitude = amp * pwv_adjust[0]
 
-    planet_diameter = mu.get_planet_diameter(
-        int(timestamp), planet.capitalize()
+    omega_planet = get_jpl_planet_omega(
+        planet=planet.lower(), ctime=int(timestamp), 
     )  # arcsec, we are using exact temperatures
 
     # By default we use the pwv/sin(el) adjusted abscals, but I want to save/keep the
     # unadjusted ones as well
     abscal, opt_eff = data_to_cal_factor(
         p_meas=adjusted_amplitude,
-        beam_solid_angle=solid_angle,
-        planet_diameter=planet_diameter,
+        omega_beam=omega_beam,
+        omega_planet=omega_planet,
         bandwidth=bandwidths[ufm][band],
         planet_temp=planet_temp,
     )
     raw_abscal, raw_opt_eff = data_to_cal_factor(
         p_meas=amp,
-        beam_solid_angle=solid_angle,
-        planet_diameter=planet_diameter,
+        omega_beam=omega_beam,
+        omega_planet=omega_planet,
         bandwidth=bandwidths[ufm][band],
         planet_temp=planet_temp,
     )

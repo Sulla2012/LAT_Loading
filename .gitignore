@@ -4,6 +4,7 @@
 *.cfg
 *.h5
 *.sqlite
+*.fits
 
 __pycache__/
 .ipynb_checkpoints/

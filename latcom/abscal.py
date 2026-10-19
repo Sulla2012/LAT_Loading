@@ -79,7 +79,7 @@ if __name__ == "__main__":
 
         # Get beam pars
         fitted_fwhm = aman.data_fwhm.to(u.arcmin).value
-        data_solid_angle = aman.data_solid_angle_corr.value
+        omega_beam = aman.data_solid_angle_corr.value
         if "amp_outer" in aman:
             amp = aman.amp.value + aman.amp_outer.value
         else:
@@ -92,12 +92,12 @@ if __name__ == "__main__":
 
         # Second cut is on beam volume
         if (
-            au.beam_volume_cuts[band][1] < data_solid_angle
-            or data_solid_angle < au.beam_volume_cuts[band][0]
+            au.beam_volume_cuts[band][1] < omega_beam
+            or omega_beam < au.beam_volume_cuts[band][0]
         ):
             print(
                 au.beam_volume_cuts[band][0],
-                data_solid_angle,
+                omega_beam,
                 au.beam_volume_cuts[band][1],
                 band,
                 ufm,
@@ -158,7 +158,7 @@ if __name__ == "__main__":
             band=band,
             ufm=ufm,
             el_obs=el_obs,
-            solid_angle=data_solid_angle,
+            omega_beam=omega_beam,
             pwv_obs=pwv_obs,
             atmosphere_eff=atmosphere_eff,
         )
@@ -176,7 +176,7 @@ if __name__ == "__main__":
             "raw_cal": raw_abscal,
             "pwv": pwv_obs,
             "el": el_obs,
-            "omega_data": data_solid_angle,
+            "omega_data": omega_beam,
             "fwhm": fitted_fwhm,
             "raw_opt": raw_opt_eff,
             "cal_opt": opt_eff,
