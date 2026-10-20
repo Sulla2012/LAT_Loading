@@ -1,7 +1,4 @@
 import os
-import datetime
-from datetime import timezone
-import numpy as np
 import astropy.units as u
 from astropy.table import Table, vstack
 from astropy.time import Time
