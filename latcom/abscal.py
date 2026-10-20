@@ -1,7 +1,7 @@
+"""Compute abscal factors from planet observations and write them to a ManifestDb."""
+
 import argparse as ap
-import datetime as dt
 import os
-from zoneinfo import ZoneInfo
 
 import dill as pk
 import h5py
@@ -11,128 +11,142 @@ from sotodlib import core
 from sotodlib.core.metadata.loader import LoaderError
 
 from latcom.utils import abscal_utils as au
-from latcom.utils import map_utils as mu
-from latcom.utils.optical_loading import keys_from_wafer, pwv_interp
+from latcom.utils.common import (
+    CTX_DIR,
+    DATA_DIR,
+    REPO_DIR,
+    date_str,
+    pwv_interp,
+    save_pickle,
+)
+
+PLANETS = ("mars", "saturn", "uranus", "neptune")
 
 
 def _make_parser() -> ap.ArgumentParser:
-    parser = ap.ArgumentParser(
-        description="Compute abscal factors for Saturn/Mars observations"
-    )
+    """
+    Make the argument parser.
+
+    Returns
+    -------
+    parser : ap.ArgumentParser
+        The parser.
+    """
+    parser = ap.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--datadir",
         "-dd",
-        nargs="+",
-        default="/global/cfs/cdirs/sobs/users/skh/data/beams/lat/pointing_model_atm_relcal/",  # ASO
-        help="Path to h5 file containing beam fits",
+        # Nominal SO commissioning used
+        # /so/home/saianeesh/data/beams/lat_old/source_maps/pointing_model/fits/
+        default="/global/cfs/cdirs/sobs/users/skh/data/beams/lat/pointing_model_atm_relcal/",
+        help="Directory containing beam_pars.h5 and the per planet residual maps",
     )
-
+    parser.add_argument(
+        "--ctx",
+        "-c",
+        default=str(CTX_DIR / "abscal_ctx_09242026.yaml"),
+        help="Path to context file",
+    )
+    parser.add_argument(
+        "--outdir",
+        "-o",
+        default=str(REPO_DIR / "abscals"),
+        help="Directory to save results to",
+    )
     parser.add_argument(
         "--no_results",
         "-nr",
         action="store_true",
-        help="Whether to save the abscal results as a pickle file",
+        help="Don't save the abscal results",
     )
     parser.add_argument(
         "--skip_planets",
         "-sp",
+        nargs="*",
         default=["saturn", "neptune"],
-        help="List of planets to skip during abscal calculation.",
+        help="Planets to skip during abscal calculation",
     )
     return parser
 
 
-if __name__ == "__main__":
-    parser = _make_parser()
-    args = parser.parse_args()
-    # TODO: set lacom path
-    with open("../data/atmosphere_eff.pk", "rb") as f:
+def _passes_beam_cuts(fwhm: float, omega_beam: float, band: str, ufm: str) -> bool:
+    """
+    Check the fitted FWHM and beam volume are within the expected range.
+
+    Parameters
+    ----------
+    fwhm : float
+        Fitted FWHM in arcmin.
+    omega_beam : float
+        Beam solid angle in sr.
+    band : str
+        Band of the observation.
+    ufm : str
+        UFM of the observation.
+
+    Returns
+    -------
+    passes : bool
+        True if both cuts pass.
+    """
+    for val, (lo, hi) in (
+        (fwhm, au.fwhm_cuts[band]),
+        (omega_beam, au.beam_volume_cuts[band]),
+    ):
+        if not lo <= val <= hi:
+            print(lo, val, hi, band, ufm)
+            return False
+    return True
+
+
+def main() -> None:
+    """Compute abscals for every beam fit passing cuts and save the results."""
+    args = _make_parser().parse_args()
+
+    with open(DATA_DIR / "atmosphere_eff.pk", "rb") as f:
         atmosphere_eff = pk.load(f)
-
-    fiducial_elevation = 50
-    fiducial_pwv = 1  # mm
-    el_key = "50"  # hardcoded :(
     pwv = pwv_interp()
+    ctx = core.Context(args.ctx)
 
-    save_results = not args.no_results  # note inversion
-
-    # This is the fpath used for nominal SO Commissioning. Keeping for reproducibility
-    # fpath = "/so/home/saianeesh/data/beams/lat_old/source_maps/pointing_model/fits/beam_pars.h5"
-
-    # ASO path
-    data_dir = args.datadir
-    f = h5py.File(data_dir + "beam_pars.h5", mode="r")
-    amans, obs_ids, stream_ids, bands = au.load_amans(f)
+    with h5py.File(os.path.join(args.datadir, "beam_pars.h5"), mode="r") as f:
+        amans, obs_ids, stream_ids, bands = au.load_amans(f)
 
     cal_dict = {}
-
-    ctx = core.Context("../ctxs/abscal_ctx_09242026.yaml")
-
-    for i, aman in enumerate(amans):
-        obs_id = obs_ids[i].split("_")[1]
-        if "ufm" in stream_ids[i]:
-            ufm = stream_ids[i].split("_")[1]
-        else:
-            ufm = stream_ids[i]
-        band = bands[i][1:]
-        ufm_type, ufm_band = keys_from_wafer(ufm, band)
+    for aman, full_obs_id, stream_id, band in zip(amans, obs_ids, stream_ids, bands):
+        obs_id = full_obs_id.split("_")[1]
+        ufm = stream_id.split("_")[1] if "ufm" in stream_id else stream_id
+        band = band[1:]
 
         # Get beam pars
         fitted_fwhm = aman.data_fwhm.to(u.arcmin).value
         omega_beam = aman.data_solid_angle_corr.value
-        if "amp_outer" in aman:
-            amp = aman.amp.value + aman.amp_outer.value
-        else:
-            amp = aman.amp.value
+        amp = aman.amp.value + (aman.amp_outer.value if "amp_outer" in aman else 0)
 
-        # First cut is on FWHM
-        if au.fwhm_cuts[band][1] < fitted_fwhm or fitted_fwhm < au.fwhm_cuts[band][0]:
-            print(au.fwhm_cuts[band][0], fitted_fwhm, au.fwhm_cuts[band][1], band, ufm)
+        # First cuts are on FWHM and beam volume
+        if not _passes_beam_cuts(fitted_fwhm, omega_beam, band, ufm):
             continue
 
-        # Second cut is on beam volume
-        if (
-            au.beam_volume_cuts[band][1] < omega_beam
-            or omega_beam < au.beam_volume_cuts[band][0]
-        ):
-            print(
-                au.beam_volume_cuts[band][0],
-                omega_beam,
-                au.beam_volume_cuts[band][1],
-                band,
-                ufm,
-            )
-            continue
-
-        # Get planet temperature
+        # Get planet
         try:
-            tags = ctx.obsdb.get(obs_ids[i], tags=True)["tags"]
+            tags = ctx.obsdb.get(full_obs_id, tags=True)["tags"]
         except LoaderError:
             continue
-
-        if "mars" in tags:
-            planet = "mars"
-        elif "saturn" in tags:
-            planet = "saturn"
-        elif "uranus" in tags:
-            planet = "uranus"
-        elif "neptune" in tags:
-            planet = "neptune"
-        else:
+        planet = next((p for p in PLANETS if p in tags), None)
+        if planet is None:
             print(f"Error: no planet in tags: {tags}")
             continue
         if planet in args.skip_planets:
             continue
 
-        subdir = obs_ids[i]
-        resid_name = subdir + "_" + ufm + "_f" + band + "_full_resid.fits"
+        # Third cut is on RMSE
+        resid_name = f"{full_obs_id}_{ufm}_f{band}_full_resid.fits"
+        resid_path = os.path.join(
+            args.datadir, planet, obs_id[:5], full_obs_id, resid_name
+        )
         try:
-            resid_path = os.path.join(data_dir, planet, obs_id[:5], subdir, resid_name)
-            rmse = mu.get_resid_rmse(resid_path, band)
+            rmse = au.get_resid_rmse(resid_path, band)
         except FileNotFoundError:
             continue
-
-        # Third cut is on RMSE
         if rmse > 0.05:
             print(f"RMSE = {rmse} > 0.05")
             continue
@@ -142,13 +156,11 @@ if __name__ == "__main__":
         except ValueError:
             print(f"obs {obs_id} outside of pwv range")
             continue
-        if np.isnan(pwv_obs):
-            continue
-        if pwv_obs > 3.0:
+        if np.isnan(pwv_obs) or pwv_obs > 3.0:
             continue
 
-        # now load the metadata after cuts
-        meta = ctx.get_meta(obs_ids[i])
+        # Now load the metadata after cuts
+        meta = ctx.get_meta(full_obs_id)
         el_obs = meta.obs_info.el_center
 
         abscal, opt_eff, raw_abscal, raw_opt_eff = au.get_single_abscal(
@@ -164,14 +176,13 @@ if __name__ == "__main__":
         )
         if abscal is None:
             continue
-
         if raw_abscal >= 40 and planet == "saturn":
-            continue  # Some of the saturn observations are accidentally of Neptune, leading to very high abscals (when using Saturn temp)
-            # Matt is working on a real fix but for now since the Neptune amp is >10x lower, a cut on the abscal is safe
+            # Some of the saturn observations are accidentally of Neptune, leading to
+            # very high abscals (when using Saturn temp). Since the Neptune amp is
+            # >10x lower, a cut on the abscal is safe until there is a real fix.
+            continue
 
-        relcal = au.get_relcal(meta=meta, ufm=ufm, band=band)
-
-        cal_dict[str(ufm) + "_" + str(band) + "_" + str(obs_id)] = {
+        cal_dict[f"{ufm}_{band}_{obs_id}"] = {
             "adj_cal": abscal,
             "raw_cal": raw_abscal,
             "pwv": pwv_obs,
@@ -182,23 +193,22 @@ if __name__ == "__main__":
             "cal_opt": opt_eff,
             "source": planet,
             "time": obs_id,
-            "relcal": relcal,
+            "relcal": au.get_relcal(meta=meta, ufm=ufm, band=band),
         }
 
-    if save_results:
-        today = dt.datetime.now(tz=ZoneInfo("America/New_York")).date()
-        date_str = str(today.month).zfill(2) + str(today.day).zfill(2) + str(today.year)
+    if args.no_results:
+        return
 
-        result_dict = au.make_results_dict(
-            cal_dict=cal_dict,
-        )
+    date = date_str()
+    result_dict = au.make_results_dict(cal_dict=cal_dict)
+    save_pickle(result_dict, os.path.join(args.outdir, f"results_{date}.pk"))
+    save_pickle(cal_dict, os.path.join(args.outdir, f"abscals_{date}.pk"))
 
-        with open(f"../abscals/results_{date_str}.pk", "wb") as f:
-            pk.dump(result_dict, f)
+    db = au.make_db(
+        result_dict=result_dict, h5_path=os.path.join(args.outdir, "abscals.h5")
+    )
+    db.to_file(os.path.join(args.outdir, f"db_{date}.sqlite"))
 
-        with open(f"../abscals/abscals_{date_str}.pk", "wb") as f:
-            pk.dump(cal_dict, f)
 
-        # Now to write the manifest db
-        db = au.make_db(result_dict=result_dict)
-        db.to_file(f"../abscals/db_{date_str}.sqlite")
+if __name__ == "__main__":
+    main()
