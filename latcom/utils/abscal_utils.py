@@ -618,7 +618,8 @@ def make_db(
     h5_path : str | Path
         Path of the h5 file to write the abscals to.
     verbose : bool, default True
-        Print tube/freq combinations with no observations in an epoch.
+        Print tube/freq combinations with no observations in an epoch,
+        whose abscals are set to NaN.
 
     Returns
     -------
@@ -627,26 +628,26 @@ def make_db(
     """
     df = _results_df(result_dict)
     tubes = sorted({ot_from_ufm(ufm) for ufm in result_dict})
+    ufms = sorted(ufm for ot in tubes for ufm in ufm_dict[ot])
 
     for epoch, times in lat_times.items():
         in_epoch = (df.obs >= times["start"]) & (df.obs <= times["stop"])
         abscals = {}
         for freq in BANDS:
             for ot in tubes:
-                tube_mask = (df.freqs == freq) & df.ufms.isin(ufm_dict[ot])
-                if not tube_mask.any():
-                    continue  # Tube doesn't observe this freq
-                tube_df = df[tube_mask & in_epoch]
+                if freq not in bands_for_ufm(ufm_dict[ot][0]):
+                    continue
+                tube_df = df[(df.freqs == freq) & df.ufms.isin(ufm_dict[ot]) & in_epoch]
                 if tube_df.empty:
-                    # No obs of the tube in this epoch, so use the all time average
+                    # No obs of the tube in this epoch, so its abscals are NaN
                     if verbose:
-                        print(f"No {ot} f{freq} obs in {epoch}, using all epochs")
-                    tube_df = df[tube_mask]
+                        print(f"No {ot} f{freq} obs in {epoch}, setting to NaN")
+                    continue
                 for ufm, cals in compute_tube_abscals(ot, tube_df).items():
                     abscals[ufm, freq] = cals
 
         data = []
-        for ufm in sorted({ufm for ufm, _ in abscals}):
+        for ufm in ufms:
             for freq in bands_for_ufm(ufm):
                 cals = abscals.get((ufm, freq), (np.nan,) * 5)
                 data.append((f"ufm_{ufm}", f"f{freq}", *cals))
