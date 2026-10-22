@@ -108,7 +108,7 @@ def _iter_wafer_band_meta(
                     obs_id,
                     dets={
                         "dets:stream_id": f"ufm_{ufm}",
-                        "dets:wafer.bandpass": f"f{band}",
+                        "dets:wafer.bandpass": band,
                     },
                 )
             except (LoaderError, KeyError):

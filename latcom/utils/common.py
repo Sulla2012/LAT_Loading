@@ -44,17 +44,17 @@ aso_tubes = ["i2", "o1", "o2", "o3", "o4", "o5"]
 lf_tubes = ["o6"]
 
 # Bands (low, high) for each UFM type, keyed by the UFM name prefix
-UFM_BANDS = {"ln": ("030", "040"), "mv": ("090", "150"), "uv": ("220", "280")}
+UFM_BANDS = {"ln": ("f030", "f040"), "mv": ("f090", "f150"), "uv": ("f220", "f280")}
 BANDS = [band for pair in UFM_BANDS.values() for band in pair]
 
 # Band to bolocalc channel name
 flavor_dict = {
-    "030": "LF_1",
-    "040": "LF_2",
-    "090": "MF_1",
-    "150": "MF_2",
-    "220": "UHF_1",
-    "280": "UHF_2",
+    "f030": "LF_1",
+    "f040": "LF_2",
+    "f090": "MF_1",
+    "f150": "MF_2",
+    "f220": "UHF_1",
+    "f280": "UHF_2",
 }
 
 sim_list = {
@@ -111,7 +111,7 @@ def bands_for_ufm(ufm: str) -> tuple[str, str]:
     Returns
     -------
     bands : tuple[str, str]
-        The low and high band of the UFM, e.g. ("090", "150").
+        The low and high band of the UFM, e.g. ("f090", "f150").
 
     Raises
     ------
@@ -133,7 +133,7 @@ def ufm_band_index(ufm: str, band: str) -> int:
     ufm : str
         UFM of interest.
     band : str
-        Band of interest, e.g. "090".
+        Band of interest, e.g. "f090".
 
     Returns
     -------
@@ -425,7 +425,7 @@ def cmb_conv(band: str) -> float:
     Parameters
     ----------
     band : str
-        Band of interest, e.g. "090".
+        Band of interest, e.g. "f090".
 
     Returns
     -------

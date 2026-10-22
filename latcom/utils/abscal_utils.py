@@ -113,7 +113,7 @@ def get_obs_relcal(
     ufm : str
         The ufm, e.g. "mv11".
     band : str
-        The band, e.g. "090".
+        The band, e.g. "f090".
 
     Returns
     -------
@@ -123,7 +123,7 @@ def get_obs_relcal(
     try:
         meta = ctx.get_meta(
             obs_id,
-            dets={"dets:stream_id": stream_id, "dets:wafer.bandpass": f"f{band}"},
+            dets={"dets:stream_id": stream_id, "dets:wafer.bandpass": band},
         )
         return get_relcal(meta, ufm, band)
     except (LoaderError, KeyError, AttributeError) as e:
@@ -304,7 +304,7 @@ def get_single_abscal(
     timestamp : str
         Time of observation
     band : str
-        The band, e.g. "090".
+        The band, e.g. "f090".
     ufm : str
         The ufm associated with the abscal.
     el_obs : float
@@ -401,7 +401,7 @@ def make_results_dict(perobs: pd.DataFrame) -> dict:
     """
     result_dict = {}
     for row in perobs.itertuples(index=False):
-        ufm, freq = row.array, str(row.band).removeprefix("f")
+        ufm, freq = row.array, str(row.band)
         if ufm not in result_dict:
             result_dict[ufm] = {
                 band: {field: [] for field in RESULT_FIELDS}
@@ -566,7 +566,7 @@ def make_db(
         for ufm in ufms:
             for freq in bands_for_ufm(ufm):
                 cals = abscals.get((ufm, freq), (np.nan,) * 5)
-                data.append((f"ufm_{ufm}", f"f{freq}", *cals))
+                data.append((f"ufm_{ufm}", freq, *cals))
             data.append((f"ufm_{ufm}", "NC", *[np.nan] * 5))
 
         rs = core.metadata.ResultSet(
