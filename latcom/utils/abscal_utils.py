@@ -1,589 +1,76 @@
-import os
+"""
+Abscal helpers. LAT_beams/make_abscal.py uses these to compute per obs abscals
+and to collate them into the abscal ManifestDb.
+"""
+
+from collections.abc import Iterable
+from functools import cache
+from pathlib import Path
 
 import astropy.units as u
-import h5py
+import dill as pk
 import numpy as np
 import pandas as pd
 import sotodlib.io.metadata as io_meta
 from astropy import constants as consts
+from astropy.table import Table
+from astropy.time import Time
 from sotodlib import core
+from sotodlib.core.metadata.loader import LoaderError
 
-import latcom.utils.optical_loading as ol
-from latcom.utils import map_utils as mu
+from latcom.bands.bands import bandwidths
+from latcom.planet_models.core import get_planet_temp
+from latcom.utils.common import (
+    BANDS,
+    DATA_DIR,
+    bands_for_ufm,
+    cmb_conv,
+    get_band_flag,
+    keys_from_wafer,
+    ot_from_ufm,
+    ufm_dict,
+)
 
-
-def data_to_cal_factor(
-    p_meas, beam_solid_angle, planet_diameter, bandwidth, planet_temp
-):
-    fiducial_solid_angle = mu.angular_diameter_to_solid_angle(planet_diameter)
-
-    fill_factor = fiducial_solid_angle / (beam_solid_angle)
-    t_eff_planet = planet_temp * fill_factor
-    cal_factor = t_eff_planet / p_meas  # K -> pW
-
-    opt_eff = ((1 / (cal_factor) * u.pW / u.K) / (consts.k_B * bandwidth * u.GHz)).to(1)
-
-    return cal_factor, opt_eff
-
-
-# Uniform +/- 20% from nominal. TODO: Make the percentage offset a variable
-# fwhm_cuts = {
-#    "030": [6.0, 8.8],
-#    "040": [4.1, 6.1],
-#    "090": [1.8, 2.6],
-#    "150": [1.1, 1.6],
-#    "220": [0.8, 1.2],
-#    "280": [0.7, 1.0],
-# }
-
-fwhm_cuts = {
-    "030": [5.1, 9.7],
-    "040": [3.5, 6.8],
-    "090": [1.8, 3.0],
-    "150": [1.1, 2.0],
-    "220": [0.8, 1.8],
-    "280": [0.7, 1.6],
+# (polar, equatorial) radii in km. Jupiter/Saturn from Weiland et al. 2011,
+# others from the nssdc fact sheets https://nssdc.gsfc.nasa.gov/planetary/factsheet/
+planet_radii = {
+    "jupiter": (66854, 71492),
+    "saturn": (54364, 60268),
+    "mars": (3376.2, 3396.2),
+    "uranus": (24973, 25559),
+    "neptune": (24341, 24764),
 }
 
-# These are roughly 20% - 500% the expected beam value
-beam_volume_cuts = {
-    "030": [2e-7, 6e-6],
-    "040": [1e-7, 5e-6],
-    "090": [8e-8, 2e-6],
-    "150": [4e-8, 1e-6],
-    "220": [1e-8, 2e-7],
-    "280": [1e-8, 2e-7],
+AU_KM = 1.495978707e8
+EPH_PATH = DATA_DIR / "JPL_ephem.fits"
+_cached_eph_table = None
+
+# result_dict field -> abscal_perobs column written by make_abscal
+PEROBS_FIELDS = {
+    "obs": "obs_id",
+    "source": "source",
+    "amp": "amp",
+    "cal": "abscal",
+    "raw_cal": "raw_abscal",
+    "cal_cmb": "abscal_cmb",
+    "raw_cal_cmb": "raw_abscal_cmb",
+    "cal_opt": "opt_eff",
+    "raw_opt": "raw_opt_eff",
+    "omega_data": "solid_angle",
+    "relcal": "relcal",
+    "el": "el",
+    "pwv": "pwv",
 }
+RESULT_FIELDS = (*PEROBS_FIELDS, "time")
+# abscal_perobs columns filled with NaN when make_abscal didn't save them
+OPTIONAL_PEROBS = ("solid_angle", "el", "pwv")
+# Abscal columns of the per obs results dataframe
+CAL_COLS = ("cals", "raw_cals", "cals_cmb", "raw_cals_cmb")
 
 
-def make_results_dict(
-    cal_dict: dict,
-) -> dict:
-    """
-    Function which makes the result dict from the cal dict.
-    Mostly this just reorganizes data; cal_dict has primary keys [obs_id],
-    this function reorganizes them to [ufm][freq], which is more useful.
-
-    Parameters
-    ----------
-    cal_dict : dict
-        Dictionary of results by obs_id
-
-    Returns
-    -------
-    result_dict : dict
-        Dictionary of results by [ufm][freq]
-    """
-    result_dict = {}
-
-    for key in cal_dict:
-        ufm = key.split("_")[0]
-        freq = key.split("_")[1]
-        if ufm in result_dict:
-            continue
-        if "030" in freq or "040" in freq:
-            result_dict[ufm] = {
-                "030": {
-                    "cal": [],
-                    "chi": [],
-                    "obs": [],
-                    "raw_cal": [],
-                    "el": [],
-                    "pwv": [],
-                    "fwhm": [],
-                    "raw_opt": [],
-                    "cal_opt": [],
-                    "omega_data": [],
-                    "source": [],
-                    "time": [],
-                    "relcal": [],
-                },
-                "040": {
-                    "cal": [],
-                    "chi": [],
-                    "obs": [],
-                    "raw_cal": [],
-                    "el": [],
-                    "pwv": [],
-                    "fwhm": [],
-                    "raw_opt": [],
-                    "cal_opt": [],
-                    "omega_data": [],
-                    "source": [],
-                    "time": [],
-                    "relcal": [],
-                },
-            }
-        elif "090" in freq or "150" in freq:
-            result_dict[ufm] = {
-                "090": {
-                    "cal": [],
-                    "chi": [],
-                    "obs": [],
-                    "raw_cal": [],
-                    "el": [],
-                    "pwv": [],
-                    "fwhm": [],
-                    "raw_opt": [],
-                    "cal_opt": [],
-                    "omega_data": [],
-                    "source": [],
-                    "time": [],
-                    "relcal": [],
-                },
-                "150": {
-                    "cal": [],
-                    "chi": [],
-                    "obs": [],
-                    "raw_cal": [],
-                    "el": [],
-                    "pwv": [],
-                    "fwhm": [],
-                    "raw_opt": [],
-                    "cal_opt": [],
-                    "omega_data": [],
-                    "source": [],
-                    "time": [],
-                    "relcal": [],
-                },
-            }
-        else:
-            result_dict[ufm] = {
-                "220": {
-                    "cal": [],
-                    "chi": [],
-                    "obs": [],
-                    "raw_cal": [],
-                    "el": [],
-                    "pwv": [],
-                    "fwhm": [],
-                    "raw_opt": [],
-                    "cal_opt": [],
-                    "omega_data": [],
-                    "source": [],
-                    "time": [],
-                    "relcal": [],
-                },
-                "280": {
-                    "cal": [],
-                    "chi": [],
-                    "obs": [],
-                    "raw_cal": [],
-                    "el": [],
-                    "pwv": [],
-                    "fwhm": [],
-                    "raw_opt": [],
-                    "cal_opt": [],
-                    "omega_data": [],
-                    "source": [],
-                    "time": [],
-                    "relcal": [],
-                },
-            }
-    for key in cal_dict:
-        ufm = key.split("_")[0]
-        freq = key.split("_")[1]
-        result_dict[ufm][freq]["cal"].append(cal_dict[key]["adj_cal"])
-        result_dict[ufm][freq]["raw_cal"].append(cal_dict[key]["raw_cal"])
-        result_dict[ufm][freq]["el"].append(cal_dict[key]["el"])
-        result_dict[ufm][freq]["pwv"].append(cal_dict[key]["pwv"])
-        result_dict[ufm][freq]["obs"].append(key)
-        result_dict[ufm][freq]["fwhm"].append(cal_dict[key]["fwhm"])
-        result_dict[ufm][freq]["raw_opt"].append(cal_dict[key]["raw_opt"])
-        result_dict[ufm][freq]["cal_opt"].append(cal_dict[key]["cal_opt"])
-        result_dict[ufm][freq]["omega_data"].append(cal_dict[key]["omega_data"])
-        result_dict[ufm][freq]["source"].append(cal_dict[key]["source"])
-        result_dict[ufm][freq]["time"].append(cal_dict[key]["time"])
-        result_dict[ufm][freq]["relcal"].append(cal_dict[key]["relcal"])
-    return result_dict
-
-
-def make_db(result_dict: dict) -> core.metadata.ManifestDb:
-    """
-    Make the ManifestDB from the result_dict.
-
-    Parameters
-    ----------
-    result_dict : dict
-        Dictionary of results sorted by [ufm][freq]
-
-    Returns
-    db : core.metadata.ManifestDb
-        Manifest db with abscal results for each LAT epoch.
-
-    """
-    # Load important times in LAT history i.e. slipage/alighnment
-    lat_times = {
-        "alignment0": {"start": 1744848000, "stop": 1745150000},
-        "cr_slip0": {"start": 1745150000, "stop": 1749355200},
-        "alignment1": {"start": 1749600000, "stop": 1755576000},
-        "alignment2": {"start": 1756699200, "stop": 20000000000},
-    }
-    cals = []
-    raw_cals = []
-    data_freqs = []
-    data_ufms = []
-    cals_cmb = []
-    raw_cals_cmb = []
-    omegas = []
-    obs = []
-    relcals = []
-
-    freqs = ["030", "040", "090", "150", "220", "280"]
-    ufms = sorted(result_dict.keys())
-
-    flavor_dict = {
-        "030": "LF_1",
-        "040": "LF_2",
-        "090": "MF_1",
-        "150": "MF_2",
-        "220": "UHF_1",
-        "280": "UHF_2",
-    }
-
-    for freq in freqs:
-        temp_conv = mu.temp_conv(
-            T_B=2.725 * u.Kelvin,
-            flavor=flavor_dict[freq].split("_")[0],
-            ch=flavor_dict[freq],
-            kind="baseline",
-        )  # Temperature for rj->cmb
-        for ufm in ufms:
-            for key, sub_dict in result_dict.items():
-                if ufm not in key:
-                    continue
-                for sub_key in sub_dict:
-                    if freq not in sub_key:
-                        continue
-                    cur_cals = np.array(sub_dict[sub_key]["cal"])
-                    cur_raw_cals = np.array(sub_dict[sub_key]["raw_cal"])
-                    omega_data = np.array(sub_dict[sub_key]["omega_data"])
-                    cur_obs = np.array(sub_dict[sub_key]["obs"])
-                    for j in range(len(cur_cals)):
-                        cals.append(cur_cals[j])
-                        raw_cals.append(cur_raw_cals[j])
-                        cals_cmb.append(cur_cals[j] * temp_conv)
-                        raw_cals_cmb.append(cur_cals[j] * temp_conv)
-                        data_freqs.append(freq)
-                        data_ufms.append(ufm)
-                        omegas.append(omega_data[j])
-                        obs.append(cur_obs[j][9:])
-                        relcals.append(sub_dict[sub_key]["relcal"][j])
-
-    data_freqs = np.array(data_freqs)
-    data_ufms = np.array(data_ufms)
-    cals = np.array(cals)
-    raw_cals = np.array(raw_cals)
-    relcals = np.array(relcals)
-    obs = np.array(obs, dtype=float)
-
-    df = pd.DataFrame(
-        {
-            "freqs": data_freqs,
-            "ufms": data_ufms,
-            "cals": cals,
-            "raw_cals": raw_cals,
-            "cals_cmb": cals_cmb,
-            "raw_cals_cmb": raw_cals_cmb,
-            "omegas": omegas,
-            "obs": obs,
-            "relcals": relcals,
-        }
-    )
-    lfs = ["030", "040"]
-    mfs = ["090", "150"]
-    ufs = ["220", "280"]
-    for key in lat_times:
-        data = []
-
-        # For each period, we're going to compute the average abscal for each ufm and freq
-
-        for ufm in ufms:
-            for freq in freqs:
-                if freq in lfs and "ln" not in ufm:
-                    continue
-                if freq in mfs and "mv" not in ufm:
-                    continue
-                if freq in ufs and "uv" not in ufm:
-                    continue
-                if (
-                    len(np.where((df.freqs == str(freq)) & (df.ufms == str(ufm)))[0])
-                    == 0
-                ):
-                    print(
-                        freq, ufm
-                    )  # Let me know if there are no obs with this array/freq
-
-                if (
-                    len(
-                        np.where(
-                            (df.freqs == str(freq))
-                            & (df.ufms == str(ufm))
-                            & (df.obs >= lat_times[key]["start"])
-                            & (df.obs <= lat_times[key]["stop"])
-                        )[0]
-                    )
-                    == 0
-                ):
-                    # If there are no obs in this particular time range, just use the all time average for that array
-                    cur_df = df.where((df.freqs == str(freq)) & (df.ufms == str(ufm)))
-                else:
-                    cur_df = df.where(
-                        (df.freqs == str(freq))
-                        & (df.ufms == str(ufm))
-                        & (df.obs >= lat_times[key]["start"])
-                        & (df.obs <= lat_times[key]["stop"])
-                    )
-                cal, raw_cal, cal_cmb, raw_cal_cmb = compute_abscals(
-                    ufm_df=cur_df, full_df=df
-                )
-                data.append(
-                    (
-                        "ufm_" + str(ufm),
-                        "f" + str(freq),
-                        cal,
-                        raw_cal,
-                        cal_cmb,
-                        raw_cal_cmb,
-                        float(np.nanmean(cur_df.omegas)),
-                    )
-                )
-
-            data.append(
-                ("ufm_" + str(ufm), "NC", np.nan, np.nan, np.nan, np.nan, np.nan)
-            )
-
-        # Write to HDF5
-        rs = core.metadata.ResultSet(
-            keys=[
-                "dets:stream_id",
-                "dets:wafer.bandpass",
-                "abscal_rj",
-                "raw_abscal_rj",
-                "abscal_cmb",
-                "raw_abscal_cmb",
-                "beam_solid_angle",
-            ]
-        )
-        rs.rows = data
-        io_meta.write_dataset(
-            rs,
-            "/global/u2/j/jorlo/dev/LAT_Loading/abscals/abscals.h5",
-            f"{key}",
-            overwrite=True,
-        )
-
-    # Record in ManifestDb.
-    scheme = core.metadata.ManifestScheme()
-    scheme.add_range_match("obs:timestamp")
-    scheme.add_data_field("dataset")
-
-    db = core.metadata.ManifestDb(scheme=scheme)
-    db.add_entry(
-        {
-            "obs:timestamp": (
-                lat_times["alignment0"]["start"],
-                lat_times["alignment0"]["stop"],
-            ),
-            "dataset": "alignment0",
-        },
-        filename="abscals.h5",
-    )
-    db.add_entry(
-        {
-            "obs:timestamp": (
-                lat_times["cr_slip0"]["start"],
-                lat_times["cr_slip0"]["stop"],
-            ),
-            "dataset": "cr_slip0",
-        },
-        filename="abscals.h5",
-    )
-    db.add_entry(
-        {
-            "obs:timestamp": (
-                lat_times["alignment1"]["start"],
-                lat_times["alignment1"]["stop"],
-            ),
-            "dataset": "alignment1",
-        },
-        filename="abscals.h5",
-    )
-    db.add_entry(
-        {
-            "obs:timestamp": (
-                lat_times["alignment2"]["start"],
-                lat_times["alignment2"]["stop"],
-            ),
-            "dataset": "alignment2",
-        },
-        filename="abscals.h5",
-    )
-
-    return db
-
-
-def get_aso_abscal(ot: str, full_df: pd.DataFrame) -> tuple[float, float, float, float]:
-    """
-    Get the abscals for a given ASO tube.
-
-    Parameters
-    ----------
-    ot : str
-        The ASO tube to get abscals for.
-    full_df : pd.DataFrame
-        Dataframe of observations for the full dataset.
-
-    Returns
-    -------
-    cal : float
-        The abscal in K/pW.
-    raw_cal : float
-        The raw abscal in K/pW.
-    cal_cmb : float
-        The abscal in K_CMB/pW.
-    raw_cal_cmb : float
-        The raw abscal in K_CMB/pW.
-    """
-    ufm_list = ol.ufm_dict[ot]
-    ot_df = full_df.where(full_df.ufms.isin(ufm_list))
-    cal = np.nanmean(ot_df.cals * ot_df.relcals)
-    raw_cal = np.nanmean(ot_df.raw_cals * ot_df.relcals)
-    cal_cmb = np.nanmean(ot_df.cals_cmb * ot_df.relcals)
-    raw_cal_cmb = np.nanmean(ot_df.raw_cals_cmb * ot_df.relcals)
-    return cal, raw_cal, cal_cmb, raw_cal_cmb
-
-
-def compute_abscals(
-    ufm_df: pd.DataFrame, full_df: pd.DataFrame
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Compute the abscals for a given dataframe of observations.
-
-    Parameters
-    ----------
-    ufm_df : pd.DataFrame
-        Dataframe of observations for a given ufm and freq.
-    full_df : pd.DataFrame
-        Dataframe of observations for the full dataset.
-
-    Returns
-    -------
-    cals : np.ndarray
-        Array of abscals in K/pW.
-    raw_cals : np.ndarray
-        Array of raw abscals in K/pW.
-    cals_cmb : np.ndarray
-        Array of abscals in K_CMB/pW.
-    raw_cals_cmb : np.ndarray
-        Array of raw abscals in K_CMB/pW.
-    """
-    if ufm_df.ufms[0] in ol.aso_tubes:
-        ot = ol.ot_from_ufm(ufm_df.ufms[0])
-        ot_cal, ot_raw_cal, ot_cal_cmb, ot_raw_cal_cmb = get_aso_abscal(ot, full_df)
-        cal = ot_cal / np.nanmean(ufm_df.relcals)
-        raw_cal = ot_raw_cal / np.nanmean(ufm_df.relcals)
-        cal_cmb = ot_cal_cmb / np.nanmean(ufm_df.relcals)
-        raw_cal_cmb = ot_raw_cal_cmb / np.nanmean(ufm_df.relcals)
-
-    else:
-        # For the nominal SO tubes we have enough per ufm
-        # data that we can just use the mean
-        cal = float(np.nanmean(ufm_df.cals))
-        raw_cal = float(np.nanmean(ufm_df.raw_cals))
-        cal_cmb = float(np.nanmean(ufm_df.cals_cmb))
-        raw_cal_cmb = float(np.nanmean(ufm_df.raw_cals_cmb))
-
-    return cal, raw_cal, cal_cmb, raw_cal_cmb
-
-
-def load_amans(
-    f: h5py.File,
-) -> tuple[
-    np.array,
-    np.array,
-    np.array,
-    np.array,
-]:
-    obs_ids = []
-    times = []
-    stream_ids = []
-    bands = []
-    paths = []
-    for o in f:
-        for s in f[o]:
-            for b in f[o][s]:
-                obs_ids += [o]
-                times += [float(o.split("_")[1])]
-                stream_ids += [s]
-                bands += [b]
-                paths += ["full" if "full" in f[o][s][b] else ""]
-
-    limit_bands = ["f030", "f040", "f090", "f150", "f220", "f280"]
-    msk = np.isin(bands, limit_bands)
-    obs_ids = np.array(obs_ids)[msk]
-    times = np.array(times)[msk]
-    stream_ids = np.array(stream_ids)[msk]
-    bands = np.array(bands)[msk]
-    paths = np.array(paths)[msk]
-
-    amans = []
-    flags = np.ones_like(obs_ids, bool)
-    for i, (o, s, b, p) in enumerate(zip(obs_ids, stream_ids, bands, paths)):
-        try:
-            amans.append(core.AxisManager.load(f[os.path.join(o, s, b, p)]))
-        except KeyError:
-            flags[i] = False
-            continue
-
-    amans = np.array(amans)
-
-    return amans, obs_ids[flags], stream_ids[flags], bands[flags]
-
-
-def bootstrap(cals: np.ndarray, samps: int = 1000) -> np.ndarray:
-    samples = np.zeros(samps)
-    rng = np.random.default_rng()
-    for i in range(len(samples)):
-        sample = rng.choice(cals, size=len(cals))
-        samples[i] = np.mean(sample)
-    return samples
-
-
-def bootstrap_err(cals: np.ndarray, q=None, samps: int = 1000) -> np.ndarray:
-    if q is None:
-        q = [15.9, 84.1]
-    samples = bootstrap(cals, samps)
-    return np.percentile(samples, q)
-
-
-def get_ufm_band(band: str) -> int:
-    """
-    Get the ufm band from the band string.
-
-    Parameters
-    ----------
-    band : str
-        The band string, e.g. "f030", "f040", etc.
-
-    Returns
-    -------
-    ufm_band : int
-        The ufm band, 1 for LF, 2 for MF, 3 for UHF.
-
-    Raises
-    ------
-    ValueError
-        If the band string is not recognized.
-    """
-    if band in ["030", "090", "220"]:
-        return 1
-    elif band in ["040", "150", "280"]:
-        return 2
-    else:
-        raise ValueError(
-            f"Band {band} not recognized. Must be one of 030, 040, 090, 150, 220, 280."
-        )
+################################################################
+# Relcal                                                       #
+################################################################
 
 
 def get_relcal(meta: core.AxisManager, ufm: str, band: str) -> float:
@@ -604,21 +91,556 @@ def get_relcal(meta: core.AxisManager, ufm: str, band: str) -> float:
     relcal : float
         The relcal for the given observation, ufm, and frequency, averaged over all dets.
     """
-    wafer_flag = np.array([ufm in ufms for ufms in meta.det_info.stream_id])
-
-    if len(wafer_flag) == 0:
+    flag = get_band_flag(meta, ufm, band)
+    if len(flag) == 0:
         print(f"No relcal info for obs {meta.obs_info.obs_id}, ufm {ufm}, band {band}")
         return np.nan
+    flag = flag * (meta.relcal.rel_factor_error < 0.1)
+    return np.nanmean(meta.relcal.rel_factor[flag])
 
-    ufm_band = get_ufm_band(band)
 
-    bp = (meta.det_cal.bg % 4) // 2
+def get_obs_relcal(
+    ctx: core.Context, obs_id: str, stream_id: str, ufm: str, band: str
+) -> float:
+    """
+    Load the metadata of one UFM/band of an observation and get its mean relcal.
 
-    if ufm_band == 1:
-        net_flag = wafer_flag * (bp == 0)
-    elif ufm_band == 2:
-        net_flag = wafer_flag * (bp == 1)
-    net_flag = net_flag * (meta.relcal.rel_factor_error < 0.1)
+    Parameters
+    ----------
+    ctx : core.Context
+        Context with relcal metadata.
+    obs_id : str
+        Observation to load.
+    stream_id : str
+        Stream id of the UFM, e.g. "ufm_mv11".
+    ufm : str
+        The ufm, e.g. "mv11".
+    band : str
+        The band, e.g. "f090".
 
-    relcal = meta.relcal.rel_factor[net_flag]
-    return np.nanmean(relcal)
+    Returns
+    -------
+    relcal : float
+        The mean relcal, or NaN if the metadata can't be loaded.
+    """
+    try:
+        meta = ctx.get_meta(
+            obs_id,
+            dets={"dets:stream_id": stream_id, "dets:wafer.bandpass": band},
+        )
+        return get_relcal(meta, ufm, band)
+    except (LoaderError, KeyError, AttributeError) as e:
+        print(f"No relcal for obs {obs_id}, ufm {ufm}, band {band}: {e!r}")
+        return np.nan
+
+
+################################################################
+# Functions to get cal factor                                  #
+################################################################
+
+
+def data_to_cal_factor(
+    p_meas: float,
+    omega_beam: float,
+    omega_planet: float,
+    bandwidth: float,
+    planet_temp: float,
+) -> tuple[float, float]:
+    """
+    Convert a measured planet amplitude to a calibration factor and optical efficiency.
+
+    Parameters
+    ----------
+    p_meas : float
+        Measured planet amplitude in pW.
+    omega_beam : float
+        Beam solid angle in sr.
+    omega_planet : float
+        Planet solid angle in sr.
+    bandwidth : float
+        Bandwidth in GHz.
+    planet_temp : float
+        Planet brightness temperature in K_RJ.
+
+    Returns
+    -------
+    cal_factor : float
+        Calibration factor in K/pW.
+    opt_eff : float
+        Optical efficiency.
+    """
+    t_eff_planet = planet_temp * omega_planet / omega_beam
+    cal_factor = t_eff_planet / p_meas
+    opt_eff = ((1 / cal_factor * u.pW / u.K) / (consts.k_B * bandwidth * u.GHz)).to(1)
+    return cal_factor, opt_eff
+
+
+def interp_JPL_Horizons(
+    planet: str,
+    ctimes: float | np.ndarray,
+    eph: Table,
+    cols: tuple = ("ang_width", "delta", "PDObsLat"),
+) -> dict:
+    """
+    Interpolate JPL Horizons ephemerides to the requested times.
+
+    Parameters
+    ----------
+    planet : str
+        Planet name, as stored in the eph "planet" column.
+    ctimes : float | np.ndarray
+        Unix timestamp(s).
+    eph : Table
+        Ephemerides table with a "ctime" column.
+    cols : tuple
+        Names of Horizons.ephemerides() columns to interpolate.
+
+    Returns
+    -------
+    ephem_dict : dict
+        Dictionary of ephemerides data, interpolated to the input ctimes.
+    """
+    tab = eph[eph["planet"] == planet]
+    tab.sort("ctime")
+    ephem_dict = {}
+    for c in cols:
+        y = np.asarray(tab[c], dtype=float)
+        # unwrap so 359.9 -> 0.1 doesn't blow up
+        if c == "RA":
+            y = np.rad2deg(np.unwrap(np.deg2rad(y)))
+        ephem_dict[c] = np.interp(ctimes, tab["ctime"], y)
+    if "RA" in cols:
+        ephem_dict["RA"] = np.mod(ephem_dict["RA"], 360.0)
+    return ephem_dict
+
+
+def get_jpl_planet_omega(
+    planet: str, ctime: float, eph_path: str | Path = EPH_PATH
+) -> float:
+    """
+    Get omega_planet using JPL Horizons Ephemerides.
+
+    Parameters
+    ----------
+    planet : str
+        Planet to get solid angle for.
+    ctime : float
+        Unix timestamp for evaluation of the ephemerides data.
+    eph_path : str | Path
+        Path to astropy Table fits file with the JPL Horizons ephemerides,
+        sampled every 20 minutes (see query_jpl.py).
+
+    Returns
+    -------
+    omega_planet : float
+        Planet solid angle in [sr]
+
+    Raises
+    ------
+    ValueError
+        If the planet argument is not one of jupiter, saturn, mars, uranus, or neptune.
+    """
+    global _cached_eph_table
+    if _cached_eph_table is None:
+        eph = Table.read(eph_path)
+        eph["ctime"] = Time(eph["datetime_jd"], format="jd", scale="utc").unix
+        _cached_eph_table = eph
+
+    if planet not in planet_radii:
+        raise ValueError(
+            f"Planet {planet} not recognized. Must be one of {list(planet_radii)}"
+        )
+    r_pol, r_eq = planet_radii[planet]
+
+    jpl_ephem = interp_JPL_Horizons(
+        eph=_cached_eph_table, planet=planet, ctimes=ctime, cols=("delta", "PDObsLat")
+    )
+    # Planetodetic latitude of the center of the observed disk
+    Dw = np.deg2rad(jpl_ephem["PDObsLat"])
+    # Projected polar radius along line of sight (Planck LII intermediate results;
+    # Weiland 2011 has this formula but flips r_eq and r_pol in the ratio)
+    rproj = r_pol * np.sqrt(np.cos(Dw) ** 2 + (r_eq / r_pol) ** 2 * np.sin(Dw) ** 2)
+    return np.pi * r_eq * rproj / (jpl_ephem["delta"] * AU_KM) ** 2
+
+
+@cache
+def load_atmosphere_eff(path: str | Path = DATA_DIR / "atmosphere_eff.pk") -> dict:
+    """
+    Load the atmospheric efficiency vs pwv/el table.
+
+    Parameters
+    ----------
+    path : str | Path
+        Path to the pickled table.
+
+    Returns
+    -------
+    atmosphere_eff : dict
+        Atmospheric efficiency keyed by "pwv" and [flavor][channel][el].
+    """
+    with open(path, "rb") as f:
+        return pk.load(f)
+
+
+def get_single_abscal(
+    amp: float,
+    planet: str,
+    timestamp: str,
+    band: str,
+    ufm: str,
+    el_obs: float,
+    solid_angle: float,
+    pwv_obs: float,
+    atmosphere_eff: dict | None = None,
+    fiducial_pwv: float = 1.0,
+    fiducial_el: str = "50",
+) -> tuple[float, float, float, float, float, float] | tuple[None, ...]:
+    """
+    Get the abscal for a single observation.
+
+    Parameters
+    ----------
+    amp : float
+        The amplitude of the abscal fit, in pW.
+    planet : str
+        Planet that this abscal is computed from.
+    timestamp : str
+        Time of observation
+    band : str
+        The band, e.g. "f090".
+    ufm : str
+        The ufm associated with the abscal.
+    el_obs : float
+        Elevation of observation in degrees.
+    solid_angle : float
+        Beam solid angle in sr, e.g. of the stacked beam.
+    pwv_obs : float
+        PWV of obs.
+    atmosphere_eff : dict | None, default None
+        Dictionary which gives atm efficiency modification for pwv/el.
+        Loaded with load_atmosphere_eff if None.
+    fiducial_pwv : float, default 1.0
+        PWV in mm to adjust the amplitude to.
+    fiducial_el : str, default "50"
+        Elevation key of atmosphere_eff to adjust the amplitude to.
+
+    Returns
+    -------
+    abscal : float
+        PWV/elevation adjusted abscal in K_RJ/pW.
+    abscal_cmb : float
+        PWV/elevation adjusted abscal in K_CMB/pW.
+    opt_eff : float
+        PWV/elevation adjusted optical efficiency.
+    raw_abscal : float
+        Unadjusted abscal in K_RJ/pW.
+    raw_abscal_cmb : float
+        Unadjusted abscal in K_CMB/pW.
+    raw_opt_eff : float
+        Unadjusted optical efficiency.
+        All six are None if the planet temperature or elevation is unavailable.
+    """
+    planet_temp = get_planet_temp(planet=planet, obs_id=timestamp, band=band, ufm=ufm)
+    if planet_temp is None:
+        return (None,) * 6
+    if atmosphere_eff is None:
+        atmosphere_eff = load_atmosphere_eff()
+
+    if el_obs > 90:
+        el_obs = 180 - el_obs
+    try:
+        obs_key_el = next(
+            el for el in atmosphere_eff["LF"]["LF_1"] if np.abs(int(el) - el_obs) < 2.5
+        )
+    except StopIteration:
+        return (None,) * 6
+
+    # Get pwv/el adjustment
+    pwvs = np.asarray(atmosphere_eff["pwv"])
+    pwv_idx = np.where(np.abs(pwvs - fiducial_pwv) < 0.1)[0]
+    obs_idx_pwv = np.argmin(np.abs(pwvs - pwv_obs))
+
+    ufm_type, ufm_band = keys_from_wafer(ufm, band)
+    t_atm = atmosphere_eff[ufm_type][ufm_band]
+    pwv_adjust = t_atm[fiducial_el][pwv_idx] / t_atm[obs_key_el][obs_idx_pwv]
+
+    omega_planet = get_jpl_planet_omega(planet=planet.lower(), ctime=int(timestamp))
+
+    def _cal(p_meas: float) -> tuple[float, float]:
+        return data_to_cal_factor(
+            p_meas=p_meas,
+            omega_beam=solid_angle,
+            omega_planet=omega_planet,
+            bandwidth=bandwidths[ufm][band],
+            planet_temp=planet_temp,
+        )
+
+    # By default we use the pwv/sin(el) adjusted abscals, but keep the unadjusted ones
+    abscal, opt_eff = _cal(amp * pwv_adjust[0])
+    raw_abscal, raw_opt_eff = _cal(amp)
+    cmb = cmb_conv(band)
+    return abscal, abscal * cmb, opt_eff, raw_abscal, raw_abscal * cmb, raw_opt_eff
+
+
+################################################################
+# Collating results                                            #
+################################################################
+
+
+def collate_perobs(
+    abscal_perobs: Iterable[core.metadata.ResultSet], ctx: core.Context | None = None
+) -> pd.DataFrame:
+    """
+    Concatenate the abscal_perobs ResultSets written by make_abscal (one per
+    tube/band/epoch job) into one table with every column in PEROBS_FIELDS.
+
+    Parameters
+    ----------
+    abscal_perobs : Iterable[core.metadata.ResultSet]
+        The per map abscals, one row per obs/UFM/band.
+    ctx : core.Context | None, default None
+        Context to load each row's relcal from, used only if the
+        ResultSets have no relcal column.
+
+    Returns
+    -------
+    perobs : pd.DataFrame
+        All rows. Missing OPTIONAL_PEROBS columns are NaN.
+
+    Raises
+    ------
+    ValueError
+        If there are no rows, or no relcal column and no ctx to load it with.
+    """
+    tables = [pd.DataFrame(rs.asarray()) for rs in abscal_perobs]
+    if sum(len(t) for t in tables) == 0:
+        raise ValueError("No abscal_perobs rows to collate")
+    perobs = pd.concat(tables, ignore_index=True)
+    for col in OPTIONAL_PEROBS:
+        if col not in perobs:
+            perobs[col] = np.nan
+    if "relcal" not in perobs:
+        if ctx is None:
+            raise ValueError("abscal_perobs has no relcal and no ctx was given")
+        perobs["relcal"] = [
+            get_obs_relcal(ctx, row.obs_id, row.stream_id, row.array, row.band)
+            for row in perobs.itertuples(index=False)
+        ]
+    return perobs
+
+
+def make_results_dict(
+    abscal_perobs: Iterable[core.metadata.ResultSet], ctx: core.Context | None = None
+) -> dict:
+    """
+    Collate the per map abscals written by make_abscal and organize them
+    by [ufm][freq].
+
+    Parameters
+    ----------
+    abscal_perobs : Iterable[core.metadata.ResultSet]
+        The abscal_perobs ResultSets of make_abscal, see collate_perobs.
+    ctx : core.Context | None, default None
+        Context to load relcals from if abscal_perobs has none.
+
+    Returns
+    -------
+    result_dict : dict
+        Dictionary of per map results by [ufm][freq][field], see RESULT_FIELDS.
+    """
+    result_dict = {}
+    for row in collate_perobs(abscal_perobs, ctx).itertuples(index=False):
+        ufm, freq = row.array, str(row.band)
+        if ufm not in result_dict:
+            result_dict[ufm] = {
+                band: {field: [] for field in RESULT_FIELDS}
+                for band in bands_for_ufm(ufm)
+            }
+        entry = result_dict[ufm][freq]
+        for field, col in PEROBS_FIELDS.items():
+            entry[field].append(getattr(row, col))
+        entry["time"].append(float(row.obs_id.split("_")[1]))
+    return result_dict
+
+
+def get_tube_abscal(
+    ot: str, full_df: pd.DataFrame
+) -> tuple[float, float, float, float]:
+    """
+    Get the relcal-corrected abscals for a given tube, averaged over its UFMs.
+
+    Parameters
+    ----------
+    ot : str
+        The tube to get abscals for.
+    full_df : pd.DataFrame
+        Dataframe of observations. Should contain a single freq and epoch,
+        otherwise they are averaged together.
+
+    Returns
+    -------
+    cal : float
+        The abscal in K/pW.
+    raw_cal : float
+        The raw abscal in K/pW.
+    cal_cmb : float
+        The abscal in K_CMB/pW.
+    raw_cal_cmb : float
+        The raw abscal in K_CMB/pW.
+    """
+    ot_df = full_df[full_df.ufms.isin(ufm_dict[ot])]
+    return tuple(float(np.nanmean(ot_df[col] * ot_df.relcals)) for col in CAL_COLS)
+
+
+def compute_tube_abscals(ot: str, tube_df: pd.DataFrame) -> dict[str, tuple]:
+    """
+    Compute the abscals of each UFM in a tube: the tube averaged relcal-corrected
+    abscal divided by the UFM's mean relcal. UFMs without observations, or
+    without any finite relcal, get the average of their tube-mates.
+
+    Parameters
+    ----------
+    ot : str
+        The tube to compute abscals for.
+    tube_df : pd.DataFrame
+        Dataframe of observations of the tube at a single freq and epoch.
+
+    Returns
+    -------
+    abscals : dict[str, tuple]
+        For each UFM in the tube, (cal, raw_cal, cal_cmb, raw_cal_cmb, omega),
+        with cals in K/pW or K_CMB/pW and omega the beam solid angle in sr.
+    """
+    tube_cals = get_tube_abscal(ot, tube_df)
+    abscals = {}
+    for ufm in ufm_dict[ot]:
+        ufm_df = tube_df[tube_df.ufms == ufm]
+        relcals = ufm_df.relcals[np.isfinite(ufm_df.relcals)]
+        if len(relcals):
+            abscals[ufm] = (
+                *(float(c / relcals.mean()) for c in tube_cals),
+                float(np.nanmean(ufm_df.omegas)),
+            )
+
+    mates = np.array(list(abscals.values())).reshape(-1, 5)
+    for ufm in ufm_dict[ot]:
+        if ufm not in abscals:
+            reason = "relcal" if (tube_df.ufms == ufm).any() else "obs"
+            print(f"No {reason} for {ufm}, using the average of its tube-mates")
+            abscals[ufm] = tuple(float(x) for x in np.nanmean(mates, axis=0))
+    return abscals
+
+
+def _results_df(result_dict: dict) -> pd.DataFrame:
+    """
+    Flatten a result_dict into a dataframe with one row per observation.
+
+    Parameters
+    ----------
+    result_dict : dict
+        Dictionary of results sorted by [ufm][freq]
+
+    Returns
+    -------
+    df : pd.DataFrame
+        Dataframe of per obs results sorted by freq then ufm.
+    """
+    cols = {
+        "cals": "cal",
+        "raw_cals": "raw_cal",
+        "cals_cmb": "cal_cmb",
+        "raw_cals_cmb": "raw_cal_cmb",
+        "omegas": "omega_data",
+        "obs": "time",
+        "relcals": "relcal",
+    }
+    dfs = [
+        pd.DataFrame({col: sub[field] for col, field in cols.items()}).assign(
+            freqs=freq, ufms=ufm
+        )
+        for freq in BANDS
+        for ufm in sorted(result_dict)
+        if (sub := result_dict[ufm].get(freq))
+    ]
+    return pd.concat(dfs, ignore_index=True)
+
+
+def make_db(
+    result_dict: dict,
+    h5_path: str | Path,
+    epochs: dict[str, tuple[float, float]],
+    verbose: bool = True,
+) -> core.metadata.ManifestDb:
+    """
+    Write per-epoch abscals to h5_path and make the ManifestDB indexing them.
+
+    Parameters
+    ----------
+    result_dict : dict
+        Dictionary of results sorted by [ufm][freq], see make_results_dict.
+    h5_path : str | Path
+        Path of the h5 file to write the abscals to.
+    epochs : dict[str, tuple[float, float]]
+        Epoch name (used as the h5 dataset name) -> [start, stop) unix times.
+        Each epoch gets its own abscals.
+    verbose : bool, default True
+        Print tube/freq combinations with no observations in an epoch,
+        whose abscals are set to NaN.
+
+    Returns
+    -------
+    db : core.metadata.ManifestDb
+        Manifest db with abscal results for each epoch.
+    """
+    df = _results_df(result_dict)
+    tubes = sorted({ot_from_ufm(ufm) for ufm in result_dict})
+    ufms = sorted(ufm for ot in tubes for ufm in ufm_dict[ot])
+
+    for epoch, (start, stop) in epochs.items():
+        in_epoch = (df.obs >= start) & (df.obs < stop)
+        abscals = {}
+        for freq in BANDS:
+            for ot in tubes:
+                if freq not in bands_for_ufm(ufm_dict[ot][0]):
+                    continue
+                tube_df = df[(df.freqs == freq) & df.ufms.isin(ufm_dict[ot]) & in_epoch]
+                if tube_df.empty:
+                    # No obs of the tube in this epoch, so its abscals are NaN
+                    if verbose:
+                        print(f"No {ot} f{freq} obs in {epoch}, setting to NaN")
+                    continue
+                for ufm, cals in compute_tube_abscals(ot, tube_df).items():
+                    abscals[ufm, freq] = cals
+
+        data = []
+        for ufm in ufms:
+            for freq in bands_for_ufm(ufm):
+                cals = abscals.get((ufm, freq), (np.nan,) * 5)
+                data.append((f"ufm_{ufm}", freq, *cals))
+            data.append((f"ufm_{ufm}", "NC", *[np.nan] * 5))
+
+        rs = core.metadata.ResultSet(
+            keys=[
+                "dets:stream_id",
+                "dets:wafer.bandpass",
+                "abscal_rj",
+                "raw_abscal_rj",
+                "abscal_cmb",
+                "raw_abscal_cmb",
+                "beam_solid_angle",
+            ]
+        )
+        rs.rows = data
+        io_meta.write_dataset(rs, str(h5_path), epoch, overwrite=True)
+
+    # Record in ManifestDb.
+    scheme = core.metadata.ManifestScheme()
+    scheme.add_range_match("obs:timestamp")
+    scheme.add_data_field("dataset")
+    db = core.metadata.ManifestDb(scheme=scheme)
+    for epoch, (start, stop) in epochs.items():
+        db.add_entry(
+            {"obs:timestamp": (start, stop), "dataset": epoch},
+            filename=Path(h5_path).name,
+        )
+    return db

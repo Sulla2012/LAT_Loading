@@ -41,11 +41,11 @@ def get_uranus_temp(band: str, ufm: str) -> float:
         raise KeyError(f"Error: invalid ufm {ufm} or band {band}")
 
     # TODO: accurate bandcenters
-    if band == "030":
+    if band == "f030":
         uranus_temp = interp(27.9)
-    elif band == "040":
+    elif band == "f040":
         uranus_temp = interp(40.2)
-    elif band == "090" or band == "150" or band == "220" or band == "280":
+    elif band == "f090" or band == "f150" or band == "f220" or band == "f280":
         uranus_temp = interp(bandcenter)
     else:
         raise ValueError(f"Error: invalid band {band}")
