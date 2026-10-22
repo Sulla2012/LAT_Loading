@@ -23,6 +23,7 @@ from latcom.utils.common import (
     BANDS,
     DATA_DIR,
     bands_for_ufm,
+    cmb_conv,
     get_band_flag,
     keys_from_wafer,
     ot_from_ufm,
@@ -290,7 +291,7 @@ def get_single_abscal(
     atmosphere_eff: dict | None = None,
     fiducial_pwv: float = 1.0,
     fiducial_el: str = "50",
-) -> tuple[float, float, float, float] | tuple[None, None, None, None]:
+) -> tuple[float, float, float, float, float, float] | tuple[None, ...]:
     """
     Get the abscal for a single observation.
 
@@ -323,18 +324,22 @@ def get_single_abscal(
     Returns
     -------
     abscal : float
-        PWV/elevation adjusted abscal in K/pW.
+        PWV/elevation adjusted abscal in K_RJ/pW.
+    abscal_cmb : float
+        PWV/elevation adjusted abscal in K_CMB/pW.
     opt_eff : float
         PWV/elevation adjusted optical efficiency.
     raw_abscal : float
-        Unadjusted abscal in K/pW.
+        Unadjusted abscal in K_RJ/pW.
+    raw_abscal_cmb : float
+        Unadjusted abscal in K_CMB/pW.
     raw_opt_eff : float
         Unadjusted optical efficiency.
-        All four are None if the planet temperature or elevation is unavailable.
+        All six are None if the planet temperature or elevation is unavailable.
     """
     planet_temp = get_planet_temp(planet=planet, obs_id=timestamp, band=band, ufm=ufm)
     if planet_temp is None:
-        return None, None, None, None
+        return (None,) * 6
     if atmosphere_eff is None:
         atmosphere_eff = load_atmosphere_eff()
 
@@ -345,7 +350,7 @@ def get_single_abscal(
             el for el in atmosphere_eff["LF"]["LF_1"] if np.abs(int(el) - el_obs) < 2.5
         )
     except StopIteration:
-        return None, None, None, None
+        return (None,) * 6
 
     # Get pwv/el adjustment
     pwvs = np.asarray(atmosphere_eff["pwv"])
@@ -370,7 +375,8 @@ def get_single_abscal(
     # By default we use the pwv/sin(el) adjusted abscals, but keep the unadjusted ones
     abscal, opt_eff = _cal(amp * pwv_adjust[0])
     raw_abscal, raw_opt_eff = _cal(amp)
-    return abscal, opt_eff, raw_abscal, raw_opt_eff
+    cmb = cmb_conv(band)
+    return abscal, abscal * cmb, opt_eff, raw_abscal, raw_abscal * cmb, raw_opt_eff
 
 
 ################################################################
