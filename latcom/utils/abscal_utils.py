@@ -3,6 +3,7 @@ Abscal helpers. LAT_beams/make_abscal.py uses these to compute per obs abscals
 and to collate them into the abscal ManifestDb.
 """
 
+import warnings
 from collections.abc import Iterable
 from functools import cache
 from pathlib import Path
@@ -242,7 +243,10 @@ def get_jpl_planet_omega(
     """
     global _cached_eph_table
     if _cached_eph_table is None:
-        eph = Table.read(eph_path)
+        # Horizons marks unitless columns with "---", which astropy warns about
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", u.UnitsWarning)
+            eph = Table.read(eph_path)
         eph["ctime"] = Time(eph["datetime_jd"], format="jd", scale="utc").unix
         _cached_eph_table = eph
 
