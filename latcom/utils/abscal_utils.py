@@ -3,6 +3,7 @@ Abscal helpers. LAT_beams/make_abscal.py uses these to compute per obs abscals
 and to collate them into the abscal ManifestDb.
 """
 
+from collections.abc import Iterable
 from functools import cache
 from pathlib import Path
 
@@ -61,6 +62,8 @@ PEROBS_FIELDS = {
     "pwv": "pwv",
 }
 RESULT_FIELDS = (*PEROBS_FIELDS, "time")
+# abscal_perobs columns filled with NaN when make_abscal didn't save them
+OPTIONAL_PEROBS = ("solid_angle", "el", "pwv")
 # Abscal columns of the per obs results dataframe
 CAL_COLS = ("cals", "raw_cals", "cals_cmb", "raw_cals_cmb")
 
@@ -384,23 +387,69 @@ def get_single_abscal(
 ################################################################
 
 
-def make_results_dict(perobs: pd.DataFrame) -> dict:
+def collate_perobs(
+    abscal_perobs: Iterable[core.metadata.ResultSet], ctx: core.Context | None = None
+) -> pd.DataFrame:
     """
-    Reorganize the per obs abscals written by make_abscal by [ufm][freq].
+    Concatenate the abscal_perobs ResultSets written by make_abscal (one per
+    tube/band/epoch job) into one table with every column in PEROBS_FIELDS.
 
     Parameters
     ----------
+    abscal_perobs : Iterable[core.metadata.ResultSet]
+        The per map abscals, one row per obs/UFM/band.
+    ctx : core.Context | None, default None
+        Context to load each row's relcal from, used only if the
+        ResultSets have no relcal column.
+
+    Returns
+    -------
     perobs : pd.DataFrame
-        Per obs, per array abscals, i.e. the concatenated abscal_perobs
-        ResultSets of make_abscal (see PEROBS_FIELDS for the columns used).
+        All rows. Missing OPTIONAL_PEROBS columns are NaN.
+
+    Raises
+    ------
+    ValueError
+        If there are no rows, or no relcal column and no ctx to load it with.
+    """
+    tables = [pd.DataFrame(rs.asarray()) for rs in abscal_perobs]
+    if sum(len(t) for t in tables) == 0:
+        raise ValueError("No abscal_perobs rows to collate")
+    perobs = pd.concat(tables, ignore_index=True)
+    for col in OPTIONAL_PEROBS:
+        if col not in perobs:
+            perobs[col] = np.nan
+    if "relcal" not in perobs:
+        if ctx is None:
+            raise ValueError("abscal_perobs has no relcal and no ctx was given")
+        perobs["relcal"] = [
+            get_obs_relcal(ctx, row.obs_id, row.stream_id, row.array, row.band)
+            for row in perobs.itertuples(index=False)
+        ]
+    return perobs
+
+
+def make_results_dict(
+    abscal_perobs: Iterable[core.metadata.ResultSet], ctx: core.Context | None = None
+) -> dict:
+    """
+    Collate the per map abscals written by make_abscal and organize them
+    by [ufm][freq].
+
+    Parameters
+    ----------
+    abscal_perobs : Iterable[core.metadata.ResultSet]
+        The abscal_perobs ResultSets of make_abscal, see collate_perobs.
+    ctx : core.Context | None, default None
+        Context to load relcals from if abscal_perobs has none.
 
     Returns
     -------
     result_dict : dict
-        Dictionary of per obs results by [ufm][freq][field], see RESULT_FIELDS.
+        Dictionary of per map results by [ufm][freq][field], see RESULT_FIELDS.
     """
     result_dict = {}
-    for row in perobs.itertuples(index=False):
+    for row in collate_perobs(abscal_perobs, ctx).itertuples(index=False):
         ufm, freq = row.array, str(row.band)
         if ufm not in result_dict:
             result_dict[ufm] = {
@@ -446,8 +495,8 @@ def get_tube_abscal(
 def compute_tube_abscals(ot: str, tube_df: pd.DataFrame) -> dict[str, tuple]:
     """
     Compute the abscals of each UFM in a tube: the tube averaged relcal-corrected
-    abscal divided by the UFM's mean relcal. UFMs without observations get the
-    average of their tube-mates.
+    abscal divided by the UFM's mean relcal. UFMs without observations, or
+    without any finite relcal, get the average of their tube-mates.
 
     Parameters
     ----------
@@ -466,17 +515,18 @@ def compute_tube_abscals(ot: str, tube_df: pd.DataFrame) -> dict[str, tuple]:
     abscals = {}
     for ufm in ufm_dict[ot]:
         ufm_df = tube_df[tube_df.ufms == ufm]
-        if len(ufm_df):
-            relcal = np.nanmean(ufm_df.relcals)
+        relcals = ufm_df.relcals[np.isfinite(ufm_df.relcals)]
+        if len(relcals):
             abscals[ufm] = (
-                *(float(c / relcal) for c in tube_cals),
+                *(float(c / relcals.mean()) for c in tube_cals),
                 float(np.nanmean(ufm_df.omegas)),
             )
 
     mates = np.array(list(abscals.values())).reshape(-1, 5)
     for ufm in ufm_dict[ot]:
         if ufm not in abscals:
-            print(f"No obs of {ufm}, using the average of its tube-mates")
+            reason = "relcal" if (tube_df.ufms == ufm).any() else "obs"
+            print(f"No {reason} for {ufm}, using the average of its tube-mates")
             abscals[ufm] = tuple(float(x) for x in np.nanmean(mates, axis=0))
     return abscals
 
