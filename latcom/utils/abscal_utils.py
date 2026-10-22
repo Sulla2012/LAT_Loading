@@ -1,18 +1,21 @@
-"""Helpers for abscal.py."""
+"""
+Abscal helpers. LAT_beams/make_abscal.py uses these to compute per obs abscals
+and to collate them into the abscal ManifestDb.
+"""
 
-import os
+from functools import cache
 from pathlib import Path
 
 import astropy.units as u
-import h5py
+import dill as pk
 import numpy as np
 import pandas as pd
 import sotodlib.io.metadata as io_meta
 from astropy import constants as consts
 from astropy.table import Table
 from astropy.time import Time
-from pixell import enmap
 from sotodlib import core
+from sotodlib.core.metadata.loader import LoaderError
 
 from latcom.bands.bands import bandwidths
 from latcom.planet_models.core import get_planet_temp
@@ -20,42 +23,11 @@ from latcom.utils.common import (
     BANDS,
     DATA_DIR,
     bands_for_ufm,
-    cmb_conv,
     get_band_flag,
     keys_from_wafer,
     ot_from_ufm,
     ufm_dict,
 )
-
-# Uniform +/- 20% from nominal was:
-# {"030": [6.0, 8.8], "040": [4.1, 6.1], "090": [1.8, 2.6],
-#  "150": [1.1, 1.6], "220": [0.8, 1.2], "280": [0.7, 1.0]}
-fwhm_cuts = {
-    "030": [5.1, 9.7],
-    "040": [3.5, 6.8],
-    "090": [1.8, 3.0],
-    "150": [1.1, 2.0],
-    "220": [0.8, 1.8],
-    "280": [0.7, 1.6],
-}
-
-# These are roughly 20% - 500% the expected beam value
-beam_volume_cuts = {
-    "030": [2e-7, 6e-6],
-    "040": [1e-7, 5e-6],
-    "090": [8e-8, 2e-6],
-    "150": [4e-8, 1e-6],
-    "220": [1e-8, 2e-7],
-    "280": [1e-8, 2e-7],
-}
-
-# Important times in LAT history i.e. slipage/alignment
-lat_times = {
-    "alignment0": {"start": 1744848000, "stop": 1745150000},
-    "cr_slip0": {"start": 1745150000, "stop": 1749355200},
-    "alignment1": {"start": 1749600000, "stop": 1755576000},
-    "alignment2": {"start": 1756699200, "stop": 20000000000},
-}
 
 # (polar, equatorial) radii in km. Jupiter/Saturn from Weiland et al. 2011,
 # others from the nssdc fact sheets https://nssdc.gsfc.nasa.gov/planetary/factsheet/
@@ -71,146 +43,30 @@ AU_KM = 1.495978707e8
 EPH_PATH = DATA_DIR / "JPL_ephem.fits"
 _cached_eph_table = None
 
-RESULT_FIELDS = (
-    "cal",
-    "chi",
-    "obs",
-    "raw_cal",
-    "el",
-    "pwv",
-    "fwhm",
-    "raw_opt",
-    "cal_opt",
-    "omega_data",
-    "source",
-    "time",
-    "relcal",
-)
+# result_dict field -> abscal_perobs column written by make_abscal
+PEROBS_FIELDS = {
+    "obs": "obs_id",
+    "source": "source",
+    "amp": "amp",
+    "cal": "abscal",
+    "raw_cal": "raw_abscal",
+    "cal_cmb": "abscal_cmb",
+    "raw_cal_cmb": "raw_abscal_cmb",
+    "cal_opt": "opt_eff",
+    "raw_opt": "raw_opt_eff",
+    "omega_data": "solid_angle",
+    "relcal": "relcal",
+    "el": "el",
+    "pwv": "pwv",
+}
+RESULT_FIELDS = (*PEROBS_FIELDS, "time")
 # Abscal columns of the per obs results dataframe
 CAL_COLS = ("cals", "raw_cals", "cals_cmb", "raw_cals_cmb")
-# result_dict field -> cal_dict field, where they differ
-_RESULT_FROM_CAL = {"cal": "adj_cal"}
 
 
 ################################################################
-# Observation loading and cuts                                 #
+# Relcal                                                       #
 ################################################################
-
-
-def load_amans(
-    f: h5py.File,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Load the beam fit AxisManagers from a beam_pars h5 file.
-
-    Parameters
-    ----------
-    f : h5py.File
-        Open beam_pars h5 file, organized as [obs_id][stream_id][band].
-
-    Returns
-    -------
-    amans : np.ndarray
-        Beam fit AxisManagers.
-    obs_ids : np.ndarray
-        Obs id of each AxisManager.
-    stream_ids : np.ndarray
-        Stream id of each AxisManager.
-    bands : np.ndarray
-        Band of each AxisManager, e.g. "f090".
-    """
-    entries = [
-        (o, s, b, "full" if "full" in f[o][s][b] else "")
-        for o in f
-        for s in f[o]
-        for b in f[o][s]
-        if b[1:] in BANDS and b[0] == "f"
-    ]
-
-    amans, keep = [], []
-    for o, s, b, p in entries:
-        try:
-            amans.append(core.AxisManager.load(f[os.path.join(o, s, b, p)]))
-            keep.append((o, s, b))
-        except KeyError:
-            continue
-
-    obs_ids, stream_ids, bands = (np.array(x) for x in zip(*keep))
-    return np.array(amans), obs_ids, stream_ids, bands
-
-
-def get_inner_radial_mask(
-    resid_map: enmap.ndmap, pixsize: float, radius: float
-) -> np.ndarray:
-    """
-    Get a boolean mask for the pixels in resid_map that are within radius arcmin of the center of the map.
-
-    Parameters
-    ----------
-    resid_map : enmap.ndmap
-        Residual map to get the mask for.
-    pixsize : float
-        Pixel size of the map in arcmin.
-    radius : float
-        Radius in arcmin to use for the mask.
-
-    Returns
-    -------
-    mask : np.ndarray
-        Boolean mask for the pixels in resid_map that are within radius arcmin of the center of the map.
-    """
-    x0, y0 = int(resid_map.shape[0] / 2), int(resid_map.shape[1] / 2)
-    XX, YY = np.meshgrid(np.arange(resid_map.shape[1]), np.arange(resid_map.shape[0]))
-    return np.sqrt((XX - x0) ** 2 + (YY - y0) ** 2) * pixsize < radius
-
-
-def get_beam_keepout(band: str) -> float:
-    """
-    Get the keepout radius in arcmin for the given band, 0.2 deg scaled from 90 GHz.
-
-    Parameters
-    ----------
-    band : str
-        Frequency of the residual map.
-
-    Returns
-    -------
-    keepout : float
-        Keepout radius in arcmin for the given band.
-
-    Raises
-    ------
-    ValueError
-        If the band is not one of "030", "040", "090", "150", "220", or "280".
-    """
-    if band not in BANDS:
-        raise ValueError(f"Invalid band: {band}")
-    return 0.2 * 60 * 90 / int(band)
-
-
-def get_resid_rmse(resid_path: str, band: str) -> float:
-    """
-    Get the RMSE of the residual map at resid_path for the given band.
-
-    Parameters
-    ----------
-    resid_path : str
-        Path to the residual map.
-    band : str
-        Frequency of the residual map.
-
-    Returns
-    -------
-    rmse : float
-        RMSE of the residual map.
-    """
-    resid_map = enmap.read_map(resid_path)
-    mask = get_inner_radial_mask(
-        resid_map=resid_map,
-        pixsize=np.abs(resid_map.wcs.wcs.cdelt[0]) * 60,
-        radius=get_beam_keepout(band=band),
-    )
-    return np.sqrt(np.mean(resid_map[mask] ** 2))
 
 
 def get_relcal(meta: core.AxisManager, ufm: str, band: str) -> float:
@@ -237,6 +93,41 @@ def get_relcal(meta: core.AxisManager, ufm: str, band: str) -> float:
         return np.nan
     flag = flag * (meta.relcal.rel_factor_error < 0.1)
     return np.nanmean(meta.relcal.rel_factor[flag])
+
+
+def get_obs_relcal(
+    ctx: core.Context, obs_id: str, stream_id: str, ufm: str, band: str
+) -> float:
+    """
+    Load the metadata of one UFM/band of an observation and get its mean relcal.
+
+    Parameters
+    ----------
+    ctx : core.Context
+        Context with relcal metadata.
+    obs_id : str
+        Observation to load.
+    stream_id : str
+        Stream id of the UFM, e.g. "ufm_mv11".
+    ufm : str
+        The ufm, e.g. "mv11".
+    band : str
+        The band, e.g. "090".
+
+    Returns
+    -------
+    relcal : float
+        The mean relcal, or NaN if the metadata can't be loaded.
+    """
+    try:
+        meta = ctx.get_meta(
+            obs_id,
+            dets={"dets:stream_id": stream_id, "dets:wafer.bandpass": f"f{band}"},
+        )
+        return get_relcal(meta, ufm, band)
+    except (LoaderError, KeyError, AttributeError) as e:
+        print(f"No relcal for obs {obs_id}, ufm {ufm}, band {band}: {e!r}")
+        return np.nan
 
 
 ################################################################
@@ -368,6 +259,25 @@ def get_jpl_planet_omega(
     return np.pi * r_eq * rproj / (jpl_ephem["delta"] * AU_KM) ** 2
 
 
+@cache
+def load_atmosphere_eff(path: str | Path = DATA_DIR / "atmosphere_eff.pk") -> dict:
+    """
+    Load the atmospheric efficiency vs pwv/el table.
+
+    Parameters
+    ----------
+    path : str | Path
+        Path to the pickled table.
+
+    Returns
+    -------
+    atmosphere_eff : dict
+        Atmospheric efficiency keyed by "pwv" and [flavor][channel][el].
+    """
+    with open(path, "rb") as f:
+        return pk.load(f)
+
+
 def get_single_abscal(
     amp: float,
     planet: str,
@@ -375,9 +285,9 @@ def get_single_abscal(
     band: str,
     ufm: str,
     el_obs: float,
-    omega_beam: float,
+    solid_angle: float,
     pwv_obs: float,
-    atmosphere_eff: dict,
+    atmosphere_eff: dict | None = None,
     fiducial_pwv: float = 1.0,
     fiducial_el: str = "50",
 ) -> tuple[float, float, float, float] | tuple[None, None, None, None]:
@@ -393,17 +303,18 @@ def get_single_abscal(
     timestamp : str
         Time of observation
     band : str
-        The band for which to get the temperature.
+        The band, e.g. "090".
     ufm : str
         The ufm associated with the abscal.
     el_obs : float
-        Elevation of observation.
-    omega_beam : float
-        Beam solid angle in SR.
+        Elevation of observation in degrees.
+    solid_angle : float
+        Beam solid angle in sr, e.g. of the stacked beam.
     pwv_obs : float
         PWV of obs.
-    atmosphere_eff : dict
+    atmosphere_eff : dict | None, default None
         Dictionary which gives atm efficiency modification for pwv/el.
+        Loaded with load_atmosphere_eff if None.
     fiducial_pwv : float, default 1.0
         PWV in mm to adjust the amplitude to.
     fiducial_el : str, default "50"
@@ -424,6 +335,8 @@ def get_single_abscal(
     planet_temp = get_planet_temp(planet=planet, obs_id=timestamp, band=band, ufm=ufm)
     if planet_temp is None:
         return None, None, None, None
+    if atmosphere_eff is None:
+        atmosphere_eff = load_atmosphere_eff()
 
     if el_obs > 90:
         el_obs = 180 - el_obs
@@ -448,7 +361,7 @@ def get_single_abscal(
     def _cal(p_meas: float) -> tuple[float, float]:
         return data_to_cal_factor(
             p_meas=p_meas,
-            omega_beam=omega_beam,
+            omega_beam=solid_angle,
             omega_planet=omega_planet,
             bandwidth=bandwidths[ufm][band],
             planet_temp=planet_temp,
@@ -465,36 +378,33 @@ def get_single_abscal(
 ################################################################
 
 
-def make_results_dict(cal_dict: dict) -> dict:
+def make_results_dict(perobs: pd.DataFrame) -> dict:
     """
-    Function which makes the result dict from the cal dict.
-    Mostly this just reorganizes data; cal_dict has primary keys [obs_id],
-    this function reorganizes them to [ufm][freq], which is more useful.
+    Reorganize the per obs abscals written by make_abscal by [ufm][freq].
 
     Parameters
     ----------
-    cal_dict : dict
-        Dictionary of results keyed by {ufm}_{band}_{obs_id}
+    perobs : pd.DataFrame
+        Per obs, per array abscals, i.e. the concatenated abscal_perobs
+        ResultSets of make_abscal (see PEROBS_FIELDS for the columns used).
 
     Returns
     -------
     result_dict : dict
-        Dictionary of results by [ufm][freq]
+        Dictionary of per obs results by [ufm][freq][field], see RESULT_FIELDS.
     """
     result_dict = {}
-    for key, cal in cal_dict.items():
-        ufm, freq = key.split("_")[:2]
+    for row in perobs.itertuples(index=False):
+        ufm, freq = row.array, str(row.band).removeprefix("f")
         if ufm not in result_dict:
             result_dict[ufm] = {
                 band: {field: [] for field in RESULT_FIELDS}
                 for band in bands_for_ufm(ufm)
             }
         entry = result_dict[ufm][freq]
-        entry["obs"].append(key)
-        for field in RESULT_FIELDS:
-            cal_field = _RESULT_FROM_CAL.get(field, field)
-            if cal_field in cal:
-                entry[field].append(cal[cal_field])
+        for field, col in PEROBS_FIELDS.items():
+            entry[field].append(getattr(row, col))
+        entry["time"].append(float(row.obs_id.split("_")[1]))
     return result_dict
 
 
@@ -579,34 +489,31 @@ def _results_df(result_dict: dict) -> pd.DataFrame:
     df : pd.DataFrame
         Dataframe of per obs results sorted by freq then ufm.
     """
-    rows = []
-    for freq in BANDS:
-        conv = cmb_conv(freq)  # Temperature for rj->cmb
-        for ufm in sorted(result_dict):
-            sub = result_dict[ufm].get(freq)
-            if sub is None:
-                continue
-            for cal, raw_cal, omega, obs, relcal in zip(
-                sub["cal"], sub["raw_cal"], sub["omega_data"], sub["obs"], sub["relcal"]
-            ):
-                rows.append(
-                    {
-                        "freqs": freq,
-                        "ufms": ufm,
-                        "cals": cal,
-                        "raw_cals": raw_cal,
-                        "cals_cmb": cal * conv,
-                        "raw_cals_cmb": raw_cal * conv,
-                        "omegas": omega,
-                        "obs": float(obs.rsplit("_", 1)[-1]),
-                        "relcals": relcal,
-                    }
-                )
-    return pd.DataFrame(rows)
+    cols = {
+        "cals": "cal",
+        "raw_cals": "raw_cal",
+        "cals_cmb": "cal_cmb",
+        "raw_cals_cmb": "raw_cal_cmb",
+        "omegas": "omega_data",
+        "obs": "time",
+        "relcals": "relcal",
+    }
+    dfs = [
+        pd.DataFrame({col: sub[field] for col, field in cols.items()}).assign(
+            freqs=freq, ufms=ufm
+        )
+        for freq in BANDS
+        for ufm in sorted(result_dict)
+        if (sub := result_dict[ufm].get(freq))
+    ]
+    return pd.concat(dfs, ignore_index=True)
 
 
 def make_db(
-    result_dict: dict, h5_path: str | Path, verbose: bool = True
+    result_dict: dict,
+    h5_path: str | Path,
+    epochs: dict[str, tuple[float, float]],
+    verbose: bool = True,
 ) -> core.metadata.ManifestDb:
     """
     Write per-epoch abscals to h5_path and make the ManifestDB indexing them.
@@ -614,9 +521,12 @@ def make_db(
     Parameters
     ----------
     result_dict : dict
-        Dictionary of results sorted by [ufm][freq]
+        Dictionary of results sorted by [ufm][freq], see make_results_dict.
     h5_path : str | Path
         Path of the h5 file to write the abscals to.
+    epochs : dict[str, tuple[float, float]]
+        Epoch name (used as the h5 dataset name) -> [start, stop) unix times.
+        Each epoch gets its own abscals.
     verbose : bool, default True
         Print tube/freq combinations with no observations in an epoch,
         whose abscals are set to NaN.
@@ -624,14 +534,14 @@ def make_db(
     Returns
     -------
     db : core.metadata.ManifestDb
-        Manifest db with abscal results for each LAT epoch.
+        Manifest db with abscal results for each epoch.
     """
     df = _results_df(result_dict)
     tubes = sorted({ot_from_ufm(ufm) for ufm in result_dict})
     ufms = sorted(ufm for ot in tubes for ufm in ufm_dict[ot])
 
-    for epoch, times in lat_times.items():
-        in_epoch = (df.obs >= times["start"]) & (df.obs <= times["stop"])
+    for epoch, (start, stop) in epochs.items():
+        in_epoch = (df.obs >= start) & (df.obs < stop)
         abscals = {}
         for freq in BANDS:
             for ot in tubes:
@@ -672,38 +582,9 @@ def make_db(
     scheme.add_range_match("obs:timestamp")
     scheme.add_data_field("dataset")
     db = core.metadata.ManifestDb(scheme=scheme)
-    for epoch, times in lat_times.items():
+    for epoch, (start, stop) in epochs.items():
         db.add_entry(
-            {"obs:timestamp": (times["start"], times["stop"]), "dataset": epoch},
+            {"obs:timestamp": (start, stop), "dataset": epoch},
             filename=Path(h5_path).name,
         )
     return db
-
-
-def get_abscals_from_perobs(
-    abscal_perobs: core.metadata.ResultSet,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Get the abscals from a ResultSet of per observation abscals.
-
-    Parameters
-    ----------
-    abscal_perobs : core.metadata.ResultSet
-        ResultSet containing per observation abscals.
-
-    Returns
-    -------
-    abscal_rj : np.ndarray
-        The per observation abscal.
-    raw_abscal_rj : np.ndarray
-        The per observation raw abscal.
-    abscal_cmb : np.ndarray
-        The per observation abscal to Kcmb.
-    raw_abscal_cmb : np.ndarray
-        The per observation raw abscal to Kcmb.
-    """
-    df = abscal_perobs.to_pandas()
-    abscal_rj = df["abscal"].to_numpy()
-    raw_abscal_rj = df["raw_abscal_rj"].to_numpy()
-    conv = np.array([cmb_conv(band) for band in df["band"]], dtype=float)
-    return abscal_rj, raw_abscal_rj, abscal_rj * conv, raw_abscal_rj * conv

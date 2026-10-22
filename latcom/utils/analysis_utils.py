@@ -3,10 +3,13 @@ Helpers not called by any top-level script, used to analyze their outputs
 in the notebooks: parsing NET/NEP/yield results, cut statistics, and bootstraps.
 """
 
+import os
 from collections.abc import Iterator
 
+import h5py
 import numpy as np
 import pandas as pd
+from sotodlib import core
 from sotodlib.core.axisman import AxisManager
 
 from latcom.utils.common import (
@@ -398,6 +401,53 @@ def get_matching_obs(obs_id_list: list[list[str]], atol: float = 300) -> np.ndar
                 if np.isclose(_t(obs), time, rtol=0, atol=40):
                     array_matched_times[i, j] = k
     return array_matched_times
+
+
+################################################################
+# Beam fits                                                    #
+################################################################
+
+
+def load_amans(
+    f: h5py.File,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Load the beam fit AxisManagers from a beam_pars h5 file.
+
+    Parameters
+    ----------
+    f : h5py.File
+        Open beam_pars h5 file, organized as [obs_id][stream_id][band].
+
+    Returns
+    -------
+    amans : np.ndarray
+        Beam fit AxisManagers.
+    obs_ids : np.ndarray
+        Obs id of each AxisManager.
+    stream_ids : np.ndarray
+        Stream id of each AxisManager.
+    bands : np.ndarray
+        Band of each AxisManager, e.g. "f090".
+    """
+    entries = [
+        (o, s, b, "full" if "full" in f[o][s][b] else "")
+        for o in f
+        for s in f[o]
+        for b in f[o][s]
+        if b[1:] in BANDS and b[0] == "f"
+    ]
+
+    amans, keep = [], []
+    for o, s, b, p in entries:
+        try:
+            amans.append(core.AxisManager.load(f[os.path.join(o, s, b, p)]))
+            keep.append((o, s, b))
+        except KeyError:
+            continue
+
+    obs_ids, stream_ids, bands = (np.array(x) for x in zip(*keep))
+    return np.array(amans), obs_ids, stream_ids, bands
 
 
 ################################################################
