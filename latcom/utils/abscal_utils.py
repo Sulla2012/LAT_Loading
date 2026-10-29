@@ -611,7 +611,7 @@ def make_db(
                 if tube_df.empty:
                     # No obs of the tube in this epoch, so its abscals are NaN
                     if verbose:
-                        print(f"No {ot} f{freq} obs in {epoch}, setting to NaN")
+                        print(f"No {ot} {freq} obs in {epoch}, setting to NaN")
                     continue
                 for ufm, cals in compute_tube_abscals(ot, tube_df).items():
                     abscals[ufm, freq] = cals
