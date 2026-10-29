@@ -26,7 +26,6 @@ from latcom.utils.common import (
     DATA_DIR,
     bands_for_ufm,
     cmb_conv,
-    get_band_flag,
     keys_from_wafer,
     ot_from_ufm,
     ufm_dict,
@@ -74,37 +73,14 @@ CAL_COLS = ("cals", "raw_cals", "cals_cmb", "raw_cals_cmb")
 ################################################################
 
 
-def get_relcal(meta: core.AxisManager, ufm: str, band: str) -> float:
-    """
-    Get the relcal for a given observation, ufm, and frequency.
-
-    Parameters
-    ----------
-    meta : AxisManager
-        The metadata containing preprocessing information.
-    ufm : str
-        The ufm ID to get relcal for.
-    band : str
-        The frequency band to get relcal for.
-
-    Returns
-    -------
-    relcal : float
-        The relcal for the given observation, ufm, and frequency, averaged over all dets.
-    """
-    flag = get_band_flag(meta, ufm, band)
-    if len(flag) == 0:
-        print(f"No relcal info for obs {meta.obs_info.obs_id}, ufm {ufm}, band {band}")
-        return np.nan
-    flag = flag * (meta.relcal.rel_factor_error < 0.1)
-    return np.nanmean(meta.relcal.rel_factor[flag])
-
-
 def get_obs_relcal(
     ctx: core.Context, obs_id: str, stream_id: str, ufm: str, band: str
 ) -> float:
     """
-    Load the metadata of one UFM/band of an observation and get its mean relcal.
+    Load the metadata of one UFM/band of an observation and get its mean relcal,
+    over dets with an assigned bias group and a relcal error below 0.1. Dets are
+    selected by array as well as stream id, since the LF arrays share one stream
+    (e.g. "mfm_lot1").
 
     Parameters
     ----------
@@ -113,26 +89,34 @@ def get_obs_relcal(
     obs_id : str
         Observation to load.
     stream_id : str
-        Stream id of the UFM, e.g. "ufm_mv11".
+        Stream id of the UFM, e.g. "ufm_mv11" or "mfm_lot1".
     ufm : str
-        The ufm, e.g. "mv11".
+        The array, e.g. "mv11" or "ln3".
     band : str
         The band, e.g. "f090".
 
     Returns
     -------
     relcal : float
-        The mean relcal, or NaN if the metadata can't be loaded.
+        The mean relcal, or NaN if the metadata can't be loaded or has no good dets.
     """
     try:
         meta = ctx.get_meta(
             obs_id,
-            dets={"dets:stream_id": stream_id, "dets:wafer.bandpass": band},
+            dets={
+                "dets:stream_id": stream_id,
+                "dets:wafer.array": ufm,
+                "dets:wafer.bandpass": band,
+            },
         )
-        return get_relcal(meta, ufm, band)
+        good = (meta.det_cal.bg >= 0) & (meta.relcal.rel_factor_error < 0.1)
     except (LoaderError, KeyError, AttributeError) as e:
         print(f"No relcal for obs {obs_id}, ufm {ufm}, band {band}: {e!r}")
         return np.nan
+    if not np.any(good):
+        print(f"No good relcal dets for obs {obs_id}, ufm {ufm}, band {band}")
+        return np.nan
+    return float(np.nanmean(meta.relcal.rel_factor[good]))
 
 
 ################################################################
@@ -577,6 +561,7 @@ def make_db(
 ) -> core.metadata.ManifestDb:
     """
     Write per-epoch abscals to h5_path and make the ManifestDB indexing them.
+    Abscals are keyed by dets:wafer.array and dets:wafer.bandpass.
 
     Parameters
     ----------
@@ -616,16 +601,19 @@ def make_db(
                 for ufm, cals in compute_tube_abscals(ot, tube_df).items():
                     abscals[ufm, freq] = cals
 
+        # Keyed by array rather than stream id, since the LF arrays share one stream
         data = []
         for ufm in ufms:
             for freq in bands_for_ufm(ufm):
                 cals = abscals.get((ufm, freq), (np.nan,) * 5)
-                data.append((f"ufm_{ufm}", freq, *cals))
-            data.append((f"ufm_{ufm}", "NC", *[np.nan] * 5))
+                data.append((ufm, freq, *cals))
+            data.append((ufm, "NC", *[np.nan] * 5))
+        # Dets not assigned to an array, so they still match a (NaN) row
+        data.append(("", "NC", *[np.nan] * 5))
 
         rs = core.metadata.ResultSet(
             keys=[
-                "dets:stream_id",
+                "dets:wafer.array",
                 "dets:wafer.bandpass",
                 "abscal_rj",
                 "raw_abscal_rj",
