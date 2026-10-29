@@ -11,7 +11,13 @@ from latcom.utils.abscal_utils import EPH_PATH
 from latcom.utils.common import add_time_args
 
 # Horizons ids of the planets to query
-PLANET_IDS = {"saturn": "699", "mars": "499", "uranus": "799", "neptune": "899"}
+PLANET_IDS = {
+    "jupiter": "599",
+    "saturn": "699",
+    "mars": "499",
+    "uranus": "799",
+    "neptune": "899",
+}
 
 
 def _debabyl(deg: float, arcmin: float, arcsec: float) -> float:

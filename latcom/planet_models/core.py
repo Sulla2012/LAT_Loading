@@ -1,3 +1,4 @@
+from .jupiter_temps import get_jupiter_temp
 from .mars_temps import get_mars_temp
 from .neptune_temps import get_neptune_temp
 from .saturn_temps import get_saturn_temp
@@ -35,6 +36,10 @@ def get_planet_temp(planet: str, obs_id: str, band: str, ufm: str) -> float:
         planet_temp = get_uranus_temp(band=band, ufm=ufm)
     elif planet.lower() == "neptune":
         planet_temp = get_neptune_temp(band=band, ufm=ufm)
+    elif planet.lower() == "jupiter" and (band == "f030" or band == "f040"):
+        planet_temp = get_jupiter_temp(band=band, ufm=ufm)
+    elif planet.lower() == "jupiter":
+        raise ValueError("Error: Jupiter is only for use with LF")
     else:
         raise ValueError(f"Error: invalid planet {planet}")
     return planet_temp
