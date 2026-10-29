@@ -2,8 +2,9 @@
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-packages = ["latcom"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["latcom", "latcom.*"]
 
 [project]
 name = "latcom"
@@ -11,6 +12,7 @@ version = "0.2.0"
 requires-python = ">=3.10"
 dependencies = [
     "astropy",
+    "astroquery",
     "dill",
     "h5py",
     "matplotlib",
@@ -18,7 +20,6 @@ dependencies = [
     "numpy",
     "pandas",
     "pixell",
-    "pyephem",
     "PyYAML",
     "Requests",
     "scipy",
@@ -27,8 +28,8 @@ dependencies = [
     "ruff",
 ]
 
-[too.ruff]
-exclue=["*.ipynb"]
+[tool.ruff]
+extend-exclude = ["*.ipynb"]
 
 [tool.ruff.lint]
 preview = true

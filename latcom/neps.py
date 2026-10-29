@@ -1,89 +1,63 @@
-import argparse as ap
-import datetime as dt
-import multiprocessing
-from functools import partial
-from zoneinfo import ZoneInfo
+"""Compute detector NEPs for CMB observations. Unlike nets.py, no abscals are needed."""
 
-import dill as pk
+import argparse as ap
+import multiprocessing
+import os
+from functools import partial
+
 from sotodlib import core
 
 import latcom.utils.net_utils as nu
-from latcom.utils.optical_loading import (
-    aso_tubes,
-    lf_tubes,
+from latcom.utils.common import (
+    CTX_DIR,
+    REPO_DIR,
+    add_time_args,
+    date_str,
     pwv_interp,
-    so_nominal_tubes,
+    save_pickle,
 )
 
 
 def _make_parser() -> ap.ArgumentParser:
-    parser = ap.ArgumentParser(
-        description="Compute abscal factors for Saturn/Mars observations"
-    )
+    """
+    Make the argument parser.
+
+    Returns
+    -------
+    parser : ap.ArgumentParser
+        The parser.
+    """
+    parser = ap.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--ctx_path",
+        "--ctx",
         "-c",
-        default="../ctxs/",
-        help="Path to context file. ",
+        default=str(CTX_DIR / "smurf_det_preproc.yaml"),
+        help="Path to context file used to query observations",
     )
-
     parser.add_argument(
-        "--start",
-        "-s",
-        type=lambda d: dt.datetime.strptime(d, "%Y-%m-%d").astimezone(dt.timezone.utc),
-        default="2025-04-01",
-        help="Start time for obs",
+        "--outdir",
+        "-o",
+        default=str(REPO_DIR / "nets"),
+        help="Directory to save results to",
     )
-
-    parser.add_argument(
-        "--end",
-        "-e",
-        type=lambda d: dt.datetime.strptime(d, "%Y-%m-%d").astimezone(dt.timezone.utc),
-        default="2027-01-01",
-        help="End time for obs",
-    )
+    add_time_args(parser, start="2025-04-01", end="2027-01-01")
     return parser
 
 
-if __name__ == "__main__":
-    parser = _make_parser()
-    args = parser.parse_args()
+def main() -> None:
+    """Compute NEPs for all CMB observations in the time range and save them."""
+    args = _make_parser().parse_args()
 
-    ctx = core.Context(args.ctx_path + "smurf_det_preproc.yaml")
+    obs_ctx_list = nu.get_obs_ctx_list(core.Context(args.ctx), args.start, args.end)
+    driver_func = partial(nu.get_neps, pwv=pwv_interp())
+    with multiprocessing.Pool() as pool:
+        results = pool.map(driver_func, obs_ctx_list)
 
-    obs_list = ctx.obsdb.query(
-        f"{args.end.timestamp()} > timestamp and timestamp > {args.start.timestamp()} and type=='obs' and subtype=='cmb'"
+    save_pickle(
+        nu.parse_results(results, nu.NEP_FIELDS),
+        os.path.join(args.outdir, f"neps_{date_str()}.pk"),
     )
 
-    pwv = pwv_interp()
 
-    obs_ctx_list = []
-    for i, obs in enumerate(obs_list):
-        cur_ot = str(obs["obs_id"]).split("_")[2][3:]
-        timestamp = dt.datetime.fromtimestamp(
-            int(obs["obs_id"].split("_")[1]), tz=ZoneInfo("UTC")
-        )
-        obs_id = str(obs["obs_id"])
-        if cur_ot in lf_tubes:
-            continue  # Skip LF tubes for now
-            #            obs_ctx_list.append((obs_id, "../ctxs/preprocess_lf_260604.yaml"))
-        else:
-            if timestamp < dt.datetime(2026, 3, 1, tzinfo=ZoneInfo("UTC")):
-                obs_ctx_list.append((obs_id, "../ctxs/preprocess_nominal_260616.yaml"))
-            else:
-                obs_ctx_list.append((obs_id, "../ctxs/preprocess_260604.yaml"))
-
-    with multiprocessing.Pool() as pool:
-        driver_func = partial(
-            nu.get_neps,
-            pwv=pwv,
-        )
-        results = pool.map(driver_func, obs_ctx_list)
-    nep_dict = nu.parse_nep_results(results)
-
-    today = dt.datetime.now(tz=ZoneInfo("America/New_York")).date()
-    date_str = str(today.month).zfill(2) + str(today.day).zfill(2) + str(today.year)
-    neps = f"../nets/neps_{date_str}.pk"
-
-    with open(neps, "wb") as f:
-        pk.dump(nep_dict, f)
+if __name__ == "__main__":
+    main()
