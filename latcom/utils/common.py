@@ -3,6 +3,9 @@
 import argparse as ap
 import datetime as dt
 import os
+import sqlite3
+from collections.abc import Iterable
+from contextlib import closing
 from functools import cache
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -20,6 +23,10 @@ REPO_DIR = Path(__file__).resolve().parents[2]
 CTX_DIR = REPO_DIR / "ctxs"
 DATA_DIR = REPO_DIR / "data"
 APEX_PWV_PATH = Path(__file__).resolve().parent / "apex_pwv_data.npz"
+# Obsdb with per-obs pwv_mean, as used by LAT_beams/make_abscal.py
+ENHANCED_OBSDB_PATH = Path(
+    "/global/cfs/cdirs/sobs/users/mhasse/work/250514/enhanced_obsdbs/lat_obsdb_251114m.sqlite"
+)
 JBOLO_MODELS_PATH = "/global/u2/j/jorlo/dev/bolocalc-so-model"
 
 # Dict mapping OTs to UFMs
@@ -262,6 +269,44 @@ def pwv_interp(
     flags = timestamp >= time_cut
     # APEX to CLASS best fit from Max
     return interpolate.interp1d(timestamp[flags], apex_to_tocolin_250701(pwv[flags]))
+
+
+def get_obs_pwv(
+    obs_ids: Iterable[str],
+    obsdb_path: str | Path = ENHANCED_OBSDB_PATH,
+) -> dict[str, float]:
+    """
+    Get the PWV of each observation from the pwv_mean column of the enhanced obsdb
+    (as used by LAT_beams/make_abscal.py), falling back to the interpolated APEX PWV
+    from pwv_interp for obs without a finite pwv_mean.
+
+    Parameters
+    ----------
+    obs_ids : Iterable[str]
+        Observations to get the PWV of.
+    obsdb_path : str | Path, default ENHANCED_OBSDB_PATH
+        Path to an obsdb with a pwv_mean column.
+
+    Returns
+    -------
+    pwvs : dict[str, float]
+        PWV in mm keyed by obs id; nan if neither source covers the obs.
+    """
+    with closing(sqlite3.connect(f"file:{obsdb_path}?mode=ro", uri=True)) as conn:
+        obsdb_pwv = dict(
+            conn.execute("SELECT obs_id, pwv_mean FROM obs WHERE pwv_mean IS NOT NULL")
+        )
+    apex = pwv_interp()
+
+    def _pwv(obs_id: str) -> float:
+        """Get the PWV of one obs, see get_obs_pwv."""
+        pwv = obsdb_pwv.get(obs_id, np.nan)
+        if np.isfinite(pwv):
+            return float(pwv)
+        ctime = float(obs_id.split("_")[1])
+        return float(apex(ctime)) if apex.x[0] <= ctime <= apex.x[-1] else np.nan
+
+    return {obs_id: _pwv(obs_id) for obs_id in obs_ids}
 
 
 ################################################################

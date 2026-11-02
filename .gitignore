@@ -5,6 +5,8 @@
 *.h5
 *.sqlite
 *.fits
+*.out
+abscals/radius_sweep*
 
 __pycache__/
 .ipynb_checkpoints/

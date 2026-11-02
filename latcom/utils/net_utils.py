@@ -1,7 +1,7 @@
 """Helpers for nets.py and neps.py."""
 
 import datetime as dt
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 
 import numpy as np
@@ -127,7 +127,7 @@ def _iter_wafer_band_meta(
 def get_nets(
     obs_ctx: tuple[str, str],
     abscal_list: list,
-    pwv: interpolate.interp1d,
+    pwv: Mapping[str, float],
 ) -> list[dict] | None:
     """
     Function which computes the NET as well as NEP and some other parameters
@@ -140,8 +140,8 @@ def get_nets(
         Tuple of Obs id, ctx_path of the observation
     abscal_list : list
         List of arrays we have abscals for.
-    pwv : interpolate.interp1d
-        Interpolation function for pwv.
+    pwv : Mapping[str, float]
+        PWV keyed by obs id, see common.get_obs_pwv.
 
     Returns
     -------
@@ -173,7 +173,7 @@ def get_nets(
                 "nets": np.nansum(clean_nets ** (-2)) ** (-1 / 2),
                 "raw_cal": raw_cal,
                 "el": meta.obs_info.el_center,
-                "pwv": pwv(float(obs_id.split("_")[1])),
+                "pwv": pwv[obs_id],
                 "neps": wnoise,
                 "phiconv": meta.det_cal.phase_to_pW[flag],
             }

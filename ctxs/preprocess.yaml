@@ -40,7 +40,7 @@ metadata:
     label: focal_plane
     unpack: focal_plane
     on_missing: fail
-  - db: '/global/homes/j/jorlo/dev/LAT_Loading/abscals/db_06262026.sqlite'
+  - db: '/global/homes/j/jorlo/dev/LAT_Loading/abscals/abscals.sqlite'
     name: 'abscal'
     unpack:
     - abscal

@@ -15,7 +15,7 @@ from latcom.utils.common import (
     REPO_DIR,
     add_time_args,
     date_str,
-    pwv_interp,
+    get_obs_pwv,
     save_pickle,
 )
 
@@ -63,9 +63,8 @@ def main() -> None:
         result_dict = pk.load(f)
 
     obs_ctx_list = nu.get_obs_ctx_list(core.Context(args.ctx), args.start, args.end)
-    driver_func = partial(
-        nu.get_nets, abscal_list=list(result_dict.keys()), pwv=pwv_interp()
-    )
+    pwv = get_obs_pwv(obs_id for obs_id, _ in obs_ctx_list)
+    driver_func = partial(nu.get_nets, abscal_list=list(result_dict.keys()), pwv=pwv)
     with multiprocessing.Pool() as pool:
         results = pool.map(driver_func, obs_ctx_list)
 
