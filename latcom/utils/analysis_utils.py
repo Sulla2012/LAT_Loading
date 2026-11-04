@@ -455,7 +455,9 @@ def load_amans(
 ################################################################
 
 
-def bootstrap(cals: np.ndarray, samps: int = 1000) -> np.ndarray:
+def bootstrap(
+    cals: np.ndarray, samps: int = 1000, seed: int | None = None
+) -> np.ndarray:
     """
     Bootstrap the mean of cals.
 
@@ -465,18 +467,23 @@ def bootstrap(cals: np.ndarray, samps: int = 1000) -> np.ndarray:
         Data to bootstrap.
     samps : int, default 1000
         Number of bootstrap samples.
+    seed : int | None, default None
+        Seed for the resampling, for reproducible results; None is unseeded.
 
     Returns
     -------
     samples : np.ndarray
         Mean of each bootstrap sample.
     """
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(seed)
     return rng.choice(cals, size=(samps, len(cals))).mean(axis=1)
 
 
 def bootstrap_err(
-    cals: np.ndarray, q: list[float] | None = None, samps: int = 1000
+    cals: np.ndarray,
+    q: list[float] | None = None,
+    samps: int = 1000,
+    seed: int | None = None,
 ) -> np.ndarray:
     """
     Get bootstrapped percentiles of the mean of cals.
@@ -489,6 +496,8 @@ def bootstrap_err(
         Percentiles to compute, defaults to +/- 1 sigma [15.9, 84.1].
     samps : int, default 1000
         Number of bootstrap samples.
+    seed : int | None, default None
+        Seed for the resampling, for reproducible results; None is unseeded.
 
     Returns
     -------
@@ -497,7 +506,7 @@ def bootstrap_err(
     """
     if q is None:
         q = [15.9, 84.1]
-    return np.percentile(bootstrap(cals, samps), q)
+    return np.percentile(bootstrap(cals, samps, seed), q)
 
 
 ################################################################
