@@ -1,0 +1,54 @@
+tags:
+  so_data: '{so_root}/data'
+  basedir: '{so_root}/metadata/lat'
+  manifestdir: '{basedir}/manifests'
+
+imports:
+  - sotodlib.io.load_book
+  - sotodlib.io.metadata
+
+obsfiledb: '{basedir}/lat_obsfiledb_local.sqlite'
+# Enhanced obsdb: same obs plus pwv_mean etc., which make_abscal needs for its pwv cut
+obsdb: '/global/cfs/cdirs/sobs/users/mhasse/work/250514/enhanced_obsdbs/lat_obsdb_251114m.sqlite'
+geometries: '{so_root}/metadata/ancil/geometry_20261020r1'
+ephemerides: '{so_root}/metadata/ancil/ephemerides_260923r1'
+
+obsfiledb.prefix: '{so_data}'
+obs_loader_type: 'obs-book'
+obs_colon_tags: [wafer.bandpass, wafer_slot]
+
+metadata:
+  - db: '{manifestdir}/smurf_detsets/v0/smurf_detset_info_local.sqlite'
+    label: smurf
+    det_info: true
+  - db: '{manifestdir}/det_match/lat_det_match_260520m/assignment_local.sqlite'
+    label: assignment
+    det_info: true
+    on_missing: trim
+  - db: '{manifestdir}/wafer_info/lat_wafer_info_260301r1/wafer_info_local.sqlite'
+    label: wafer_info
+    det_info: true
+    on_missing: fail
+  - db: '{manifestdir}/det_cal/lat_det_cal_260216m/det_cal_local.sqlite'
+    label: det_cal
+    unpack: det_cal
+    # on_missing: fail  ## work-around for variable mask
+    on_missing: trim
+  - db: '{manifestdir}/det_match/lat_det_match_260520m/det_match_local.sqlite'
+    label: det_info
+    det_info: True
+    load_fields:
+      - 'dets:readout_id'
+      - 'wafer_slot': 'dets:wafer.wafer_slot'
+    on_missing: trim
+  - db: '{manifestdir}/pointing_model/lat_pointing_model_260423r2/db_local.sqlite'
+    label: pointing_model
+    unpack: pointing_model
+  - db: '{manifestdir}/focal_plane/lat_focal_plane_250810r6/db_local.sqlite'
+    label: focal_plane
+    unpack: focal_plane
+    on_missing: fail
+  - db: '{manifestdir}/relcal/lat_relcal_261118r1/db_local.sqlite'
+    label: relcal
+    unpack: relcal
+    on_missing: trim

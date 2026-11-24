@@ -1,6 +1,12 @@
+import os
+import tempfile
+from pathlib import Path
+
 import dill as pk
 import numpy as np
 from marsmodel import mars_brightness
+
+CACHE_PATH = Path(__file__).with_name("mars_temps.pk")
 
 
 def get_mars_temp(obs_id: str, band: str):
@@ -26,9 +32,7 @@ def get_mars_temp(obs_id: str, band: str):
     bands = ["f030", "f040", "f090", "f150", "f220", "f280"]
     # mars_temps.pk is keyed by the band without the "f", e.g. "090"
     cache_key = band.removeprefix("f")
-    with open(
-        "/global/u2/j/jorlo/dev/LAT_Loading/latcom/planet_models/mars_temps.pk", "rb"
-    ) as f:
+    with open(CACHE_PATH, "rb") as f:
         T_b = pk.load(f)
     if band not in bands:
         raise ValueError(
@@ -51,10 +55,14 @@ def get_mars_temp(obs_id: str, band: str):
         )
         for i, cur_band in enumerate(bands):
             T_b[int(obs_id)][cur_band.removeprefix("f")] = r.Tb[i]
-        with open(
-            "/global/u2/j/jorlo/dev/LAT_Loading/latcom/planet_models/mars_temps.pk",
-            "wb",
-        ) as f:
+        # Write to a unique temp file and rename it over the cache, so threads
+        # and MPI ranks reading the cache never see a partially written file.
+        # Concurrent writers can drop each other's new entries, which only costs
+        # recomputing them later.
+        fd, tmp = tempfile.mkstemp(dir=CACHE_PATH.parent, suffix=".tmp")
+        with os.fdopen(fd, "wb") as f:
             pk.dump(T_b, f)
+        os.chmod(tmp, 0o660)
+        os.replace(tmp, CACHE_PATH)
 
         return T_b[int(obs_id)][cache_key]

@@ -455,7 +455,9 @@ def get_tube_abscal(
     ot: str, full_df: pd.DataFrame
 ) -> tuple[float, float, float, float]:
     """
-    Get the relcal-corrected abscals for a given tube, averaged over its UFMs.
+    Get the abscals for a given tube: the simple mean of the per map abscals
+    of all of its UFMs. Maps are made with relcal applied, so no relcal
+    weighting is done here.
 
     Parameters
     ----------
@@ -477,14 +479,15 @@ def get_tube_abscal(
         The raw abscal in K_CMB/pW.
     """
     ot_df = full_df[full_df.ufms.isin(ufm_dict[ot])]
-    return tuple(float(np.nanmean(ot_df[col] * ot_df.relcals)) for col in CAL_COLS)
+    return tuple(float(np.nanmean(ot_df[col])) for col in CAL_COLS)
 
 
 def compute_tube_abscals(ot: str, tube_df: pd.DataFrame) -> dict[str, tuple]:
     """
-    Compute the abscals of each UFM in a tube: the tube averaged relcal-corrected
-    abscal divided by the UFM's mean relcal. UFMs without observations, or
-    without any finite relcal, get the average of their tube-mates.
+    Compute the abscals of each UFM in a tube. Every UFM gets the tube
+    averaged abscal (see get_tube_abscal); the per detector differences come
+    from relcal when the abscal is applied. Each UFM's solid angle is the
+    mean over its own maps, or the mean of its tube-mates' if it has none.
 
     Parameters
     ----------
@@ -500,22 +503,17 @@ def compute_tube_abscals(ot: str, tube_df: pd.DataFrame) -> dict[str, tuple]:
         with cals in K/pW or K_CMB/pW and omega the beam solid angle in sr.
     """
     tube_cals = get_tube_abscal(ot, tube_df)
+    omegas = {
+        ufm: float(np.nanmean(tube_df.omegas[tube_df.ufms == ufm]))
+        for ufm in ufm_dict[ot]
+        if (tube_df.ufms == ufm).any()
+    }
+    mates_omega = float(np.nanmean(list(omegas.values()))) if omegas else np.nan
     abscals = {}
     for ufm in ufm_dict[ot]:
-        ufm_df = tube_df[tube_df.ufms == ufm]
-        relcals = ufm_df.relcals[np.isfinite(ufm_df.relcals)]
-        if len(relcals):
-            abscals[ufm] = (
-                *(float(c / relcals.mean()) for c in tube_cals),
-                float(np.nanmean(ufm_df.omegas)),
-            )
-
-    mates = np.array(list(abscals.values())).reshape(-1, 5)
-    for ufm in ufm_dict[ot]:
-        if ufm not in abscals:
-            reason = "relcal" if (tube_df.ufms == ufm).any() else "obs"
-            print(f"No {reason} for {ufm}, using the average of its tube-mates")
-            abscals[ufm] = tuple(float(x) for x in np.nanmean(mates, axis=0))
+        if ufm not in omegas:
+            print(f"No obs for {ufm}, using the solid angle of its tube-mates")
+        abscals[ufm] = (*tube_cals, omegas.get(ufm, mates_omega))
     return abscals
 
 
